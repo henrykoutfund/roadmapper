@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import SignOutButton from "./SignOutButton";
 
 export default async function RoadmapPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
