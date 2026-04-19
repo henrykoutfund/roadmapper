@@ -23,6 +23,13 @@ export default function LoginPage() {
           className="mt-6 space-y-3"
           onSubmit={async (e) => {
             e.preventDefault();
+            if (!supabase) {
+              setStatus("error");
+              setMessage(
+                "Supabase env vars are missing. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your Vercel project and .env.local.",
+              );
+              return;
+            }
             setStatus("sending");
             setMessage("");
 
@@ -58,7 +65,7 @@ export default function LoginPage() {
 
           <button
             className="inline-flex h-11 w-full items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
-            disabled={status === "sending"}
+            disabled={status === "sending" || !supabase}
             type="submit"
           >
             {status === "sending" ? "Sending…" : "Send magic link"}
