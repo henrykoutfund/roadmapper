@@ -24,6 +24,8 @@ export type ItemRow = {
   product_id: string;
   title: string;
   description: string | null;
+  public_summary?: string | null;
+  internal_notes?: string | null;
   status: string;
   time_mode: TimeMode;
   start_date: string | null;
@@ -39,4 +41,3 @@ export type ItemRow = {
   created_at: string;
   updated_at: string;
 };
-

@@ -64,6 +64,9 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
           label: (
             <div className="grid gap-1">
               <div className="text-sm font-semibold text-zinc-950">{it.title}</div>
+              {it.public_summary ? (
+                <div className="text-xs leading-5 text-zinc-600">{it.public_summary}</div>
+              ) : null}
               <div className="text-xs text-zinc-600">{rev}</div>
             </div>
           ),
