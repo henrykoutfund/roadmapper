@@ -11,6 +11,9 @@ export async function GET(request: Request) {
   }
 
   const supabase = await createClient();
+  if (!supabase) {
+    return NextResponse.redirect(new URL(`/login?error=missing_env`, url.origin));
+  }
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {

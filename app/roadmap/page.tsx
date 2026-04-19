@@ -4,6 +4,21 @@ import SignOutButton from "./SignOutButton";
 
 export default async function RoadmapPage() {
   const supabase = await createClient();
+  if (!supabase) {
+    return (
+      <div className="flex flex-1 items-center justify-center bg-zinc-50 px-6 font-sans dark:bg-black">
+        <main className="w-full max-w-xl rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+            Roadmap (internal)
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-zinc-600 dark:text-zinc-400">
+            Supabase environment variables are missing. Set NEXT_PUBLIC_SUPABASE_URL and
+            NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel and in .env.local.
+          </p>
+        </main>
+      </div>
+    );
+  }
   const {
     data: { user },
   } = await supabase.auth.getUser();
