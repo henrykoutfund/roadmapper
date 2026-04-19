@@ -1,6 +1,23 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const code = typeof sp?.code === "string" ? sp.code : undefined;
+  const next = typeof sp?.next === "string" ? sp.next : undefined;
+
+  if (code) {
+    const qs = new URLSearchParams({ code });
+    if (next) {
+      qs.set("next", next);
+    }
+    redirect(`/auth/callback?${qs.toString()}`);
+  }
+
   return (
     <div className="flex flex-1 items-center justify-center bg-zinc-50 px-6 font-sans dark:bg-black">
       <main className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
