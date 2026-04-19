@@ -203,7 +203,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
                 </div>
               </div>
               {it.public_summary ? (
-                <div className="text-xs leading-5 text-zinc-600">{it.public_summary}</div>
+                <div className="line-clamp-2 text-xs leading-5 text-zinc-600">{it.public_summary}</div>
               ) : null}
               <div className="flex items-center justify-between gap-3 pt-1 text-xs text-zinc-600">
                 <div>{rev}</div>
@@ -226,6 +226,8 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
           boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
           backdropFilter: "blur(6px)",
           borderLeft: `6px solid ${productColor}`,
+          maxHeight: 160,
+          overflow: "hidden",
         },
         type: "default",
       };

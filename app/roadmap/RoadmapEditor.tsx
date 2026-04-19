@@ -152,6 +152,9 @@ export default function RoadmapEditor({
                 {it.status}
                 {it.is_public ? "" : " · internal"}
               </div>
+              {it.public_summary ? (
+                <div className="line-clamp-2 text-xs leading-5 text-zinc-600">{it.public_summary}</div>
+              ) : null}
             </div>
           ),
         },
@@ -163,6 +166,8 @@ export default function RoadmapEditor({
           padding: 12,
           boxShadow: "0 10px 30px rgba(0,0,0,0.07)",
           borderLeft: `6px solid ${productColor}`,
+          maxHeight: 150,
+          overflow: "hidden",
         },
       };
     });
