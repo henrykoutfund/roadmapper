@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import ReactFlow, { Background, Controls, type Node } from "reactflow";
+import ReactFlow, { Background, Controls, type Edge, type Node, Position } from "reactflow";
 import { addMonths, differenceInCalendarMonths, startOfMonth } from "date-fns";
 import "reactflow/dist/style.css";
 import type { ItemRow, ProductRow } from "@/lib/roadmap/types";
@@ -33,7 +33,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
   const timelineMonths = 12;
   const monthWidth = 180;
   const rowHeight = 120;
-  const leftPadding = 220;
+  const leftPadding = 300;
   const topPadding = 60;
 
   const months = useMemo(() => {
@@ -54,6 +54,40 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
     for (const p of products) map.set(p.id, p);
     return map;
   }, [products]);
+
+  const productColorById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of products) map.set(p.id, p.color);
+    return map;
+  }, [products]);
+
+  const itemX = useMemo(() => {
+    return (it: ItemRow) => {
+      const start = it.start_date ? startOfMonth(new Date(it.start_date)) : null;
+      return (
+        it.position_x ??
+        (start
+          ? leftPadding + clamp(differenceInCalendarMonths(start, timelineStart), 0, 36) * monthWidth
+          : leftPadding)
+      );
+    };
+  }, [leftPadding, monthWidth, timelineStart]);
+
+  const productExtents = useMemo(() => {
+    const map = new Map<string, { minX: number; maxX: number; count: number }>();
+    for (const it of items) {
+      const x = itemX(it);
+      const cur = map.get(it.product_id);
+      if (!cur) {
+        map.set(it.product_id, { minX: x, maxX: x, count: 1 });
+      } else {
+        cur.minX = Math.min(cur.minX, x);
+        cur.maxX = Math.max(cur.maxX, x);
+        cur.count += 1;
+      }
+    }
+    return map;
+  }, [itemX, items]);
 
   const revenueSeries = useMemo(() => {
     const lowAdds = new Array<number>(timelineMonths).fill(0);
@@ -156,6 +190,8 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
         draggable: false,
         selectable: false,
         position: { x, y },
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
         data: {
           label: (
             <div className="grid gap-1">
@@ -193,6 +229,40 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
       };
     });
   }, [items, leftPadding, monthWidth, productById, products, timelineStart]);
+
+  const edges = useMemo<Edge[]>(() => {
+    const byProduct = new Map<string, ItemRow[]>();
+    for (const it of items) {
+      const list = byProduct.get(it.product_id);
+      if (list) list.push(it);
+      else byProduct.set(it.product_id, [it]);
+    }
+
+    const all: Edge[] = [];
+    for (const [productId, list] of byProduct.entries()) {
+      const color = productColorById.get(productId) ?? "#0ea5e9";
+      const sorted = list.slice().sort((a, b) => itemX(a) - itemX(b));
+      for (let i = 0; i < sorted.length - 1; i += 1) {
+        const a = sorted[i];
+        const b = sorted[i + 1];
+        all.push({
+          id: `e-${a.id}-${b.id}`,
+          source: a.id,
+          target: b.id,
+          type: "smoothstep",
+          animated: a.status === "in_progress" || b.status === "in_progress",
+          style: {
+            stroke: color,
+            strokeWidth: 12,
+            strokeLinecap: "round",
+            opacity: 0.8,
+            filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.18))",
+          },
+        });
+      }
+    }
+    return all;
+  }, [itemX, items, productColorById]);
 
   const chart = useMemo(() => {
     const w = 720;
@@ -342,24 +412,56 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
 
             {tubeRows.map((r) => (
               <div key={r.product.id} className="absolute left-0 right-0" style={{ top: r.y + 42 }}>
-                <div className="absolute left-0 top-0 flex items-center gap-3" style={{ width: leftPadding }}>
+                <div
+                  className="absolute left-0 top-0 flex items-center gap-3 pl-6"
+                  style={{ width: leftPadding }}
+                >
                   <div className="h-3 w-3 rounded-full" style={{ background: r.product.color }} />
                   <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">{r.product.name}</div>
                 </div>
-                <div
-                  className="absolute h-[8px] rounded-full opacity-80"
-                  style={{
-                    left: leftPadding,
-                    width: monthWidth * timelineMonths + 200,
-                    background: r.product.color,
-                    filter: "saturate(1.1)",
-                  }}
-                />
+                {productExtents.get(r.product.id)?.count ? (
+                  <>
+                    <div
+                      className="absolute h-[14px] rounded-full opacity-25"
+                      style={{
+                        left: Math.max(leftPadding, productExtents.get(r.product.id)!.minX - 40),
+                        width:
+                          productExtents.get(r.product.id)!.maxX -
+                          productExtents.get(r.product.id)!.minX +
+                          80,
+                        background: r.product.color,
+                        filter: "blur(8px)",
+                      }}
+                    />
+                    <div
+                      className="absolute h-[8px] rounded-full opacity-80"
+                      style={{
+                        left: Math.max(leftPadding, productExtents.get(r.product.id)!.minX - 40),
+                        width:
+                          productExtents.get(r.product.id)!.maxX -
+                          productExtents.get(r.product.id)!.minX +
+                          80,
+                        background: r.product.color,
+                        filter: "saturate(1.1)",
+                        boxShadow: "0 10px 20px rgba(0,0,0,0.12)",
+                      }}
+                    />
+                  </>
+                ) : (
+                  <div
+                    className="absolute h-[6px] rounded-full opacity-25"
+                    style={{
+                      left: leftPadding,
+                      width: monthWidth * timelineMonths + 200,
+                      background: `repeating-linear-gradient(90deg, ${r.product.color}, ${r.product.color} 10px, transparent 10px, transparent 18px)`,
+                    }}
+                  />
+                )}
               </div>
             ))}
 
             <div className="absolute left-0 top-0 right-0 bottom-0">
-              <ReactFlow nodes={nodes} edges={[]} fitView={false} panOnScroll nodesDraggable={false}>
+              <ReactFlow nodes={nodes} edges={edges} fitView={false} panOnScroll nodesDraggable={false}>
                 <Background gap={28} size={1} color="rgba(0,0,0,0.06)" />
                 <Controls />
               </ReactFlow>

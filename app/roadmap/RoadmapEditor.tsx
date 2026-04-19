@@ -4,9 +4,11 @@ import { useCallback, useMemo, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
+  type Edge,
   type Node,
   type NodeChange,
   type OnNodesChange,
+  Position,
   type ReactFlowInstance,
 } from "reactflow";
 import { addMonths, differenceInCalendarMonths, startOfMonth } from "date-fns";
@@ -55,7 +57,7 @@ export default function RoadmapEditor({
   const timelineMonths = 12;
   const monthWidth = 180;
   const rowHeight = 120;
-  const leftPadding = 220;
+  const leftPadding = 300;
   const topPadding = 60;
 
   const months = useMemo(() => {
@@ -73,6 +75,41 @@ export default function RoadmapEditor({
       y: topPadding + idx * rowHeight,
     }));
   }, [products]);
+
+  const productColorById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of products) map.set(p.id, p.color);
+    return map;
+  }, [products]);
+
+  const itemX = useCallback(
+    (it: ItemRow) => {
+      const start = it.start_date ? startOfMonth(new Date(it.start_date)) : null;
+      return (
+        it.position_x ??
+        (start
+          ? leftPadding + clamp(differenceInCalendarMonths(start, timelineStart), 0, 36) * monthWidth
+          : leftPadding)
+      );
+    },
+    [leftPadding, monthWidth, timelineStart],
+  );
+
+  const productExtents = useMemo(() => {
+    const map = new Map<string, { minX: number; maxX: number; count: number }>();
+    for (const it of items) {
+      const x = itemX(it);
+      const cur = map.get(it.product_id);
+      if (!cur) {
+        map.set(it.product_id, { minX: x, maxX: x, count: 1 });
+      } else {
+        cur.minX = Math.min(cur.minX, x);
+        cur.maxX = Math.max(cur.maxX, x);
+        cur.count += 1;
+      }
+    }
+    return map;
+  }, [itemX, items]);
 
   const selectedItem = useMemo(() => {
     if (!selectedItemId) return null;
@@ -97,9 +134,13 @@ export default function RoadmapEditor({
           ? `${it.revenue_currency} ${it.revenue_low ?? "?"}–${it.revenue_high ?? "?"}`
           : "—";
 
+      const productColor = productColorById.get(it.product_id) ?? "#0ea5e9";
+
       return {
         id: it.id,
         position: { x, y },
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
         data: {
           label: (
             <div className="grid gap-1">
@@ -118,10 +159,46 @@ export default function RoadmapEditor({
           border: it.id === selectedItemId ? "2px solid rgb(24 24 27)" : "1px solid rgb(228 228 231)",
           background: "white",
           padding: 12,
+          boxShadow: "0 10px 30px rgba(0,0,0,0.07)",
+          borderLeft: `6px solid ${productColor}`,
         },
       };
     });
-  }, [items, leftPadding, monthWidth, products, selectedItemId, timelineStart]);
+  }, [items, leftPadding, monthWidth, productColorById, products, selectedItemId, timelineStart]);
+
+  const edges = useMemo<Edge[]>(() => {
+    const byProduct = new Map<string, ItemRow[]>();
+    for (const it of items) {
+      const list = byProduct.get(it.product_id);
+      if (list) list.push(it);
+      else byProduct.set(it.product_id, [it]);
+    }
+
+    const all: Edge[] = [];
+    for (const [productId, list] of byProduct.entries()) {
+      const color = productColorById.get(productId) ?? "#0ea5e9";
+      const sorted = list.slice().sort((a, b) => itemX(a) - itemX(b));
+      for (let i = 0; i < sorted.length - 1; i += 1) {
+        const a = sorted[i];
+        const b = sorted[i + 1];
+        all.push({
+          id: `e-${a.id}-${b.id}`,
+          source: a.id,
+          target: b.id,
+          type: "smoothstep",
+          animated: a.status === "in_progress" || b.status === "in_progress",
+          style: {
+            stroke: color,
+            strokeWidth: 10,
+            strokeLinecap: "round",
+            opacity: 0.85,
+            filter: "drop-shadow(0 8px 12px rgba(0,0,0,0.18))",
+          },
+        });
+      }
+    }
+    return all;
+  }, [itemX, items, productColorById]);
 
   const onNodesChange = useCallback<OnNodesChange>(
     async (changes: NodeChange[]) => {
@@ -411,7 +488,7 @@ export default function RoadmapEditor({
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
+    <div className="grid gap-10 lg:grid-cols-[420px_minmax(0,1fr)]">
       <div className="grid gap-6">
         <div className="rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
           <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Add item</div>
@@ -619,7 +696,7 @@ export default function RoadmapEditor({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="min-w-0 rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
         <div className="border-b border-zinc-200 px-5 py-4 text-sm font-semibold text-zinc-950 dark:border-zinc-800 dark:text-zinc-50">
           Tube map (drag nodes)
         </div>
@@ -632,12 +709,12 @@ export default function RoadmapEditor({
               height: topPadding + rowHeight * tubeRows.length + 200,
             }}
           >
-            <div className="absolute left-0 top-0 right-0 flex">
+            <div className="sticky top-0 z-10 flex bg-white/90 backdrop-blur dark:bg-zinc-950/80">
               <div style={{ width: leftPadding }} />
               {months.map((m) => (
                 <div
                   key={m.key}
-                  className="border-l border-zinc-100 py-3 text-center text-xs text-zinc-500 dark:border-zinc-900 dark:text-zinc-500"
+                  className="border-l border-zinc-100 py-3 text-center text-xs font-medium text-zinc-500 dark:border-zinc-900 dark:text-zinc-500"
                   style={{ width: monthWidth }}
                 >
                   {m.label}
@@ -646,26 +723,58 @@ export default function RoadmapEditor({
             </div>
 
             {tubeRows.map((r) => (
-              <div key={r.product.id} className="absolute left-0 right-0" style={{ top: r.y + 34 }}>
-                <div className="absolute left-0 top-0 flex items-center gap-3" style={{ width: leftPadding }}>
+              <div key={r.product.id} className="absolute left-0 right-0" style={{ top: r.y + 44 }}>
+                <div
+                  className="absolute left-0 top-0 flex items-center gap-3 pl-6"
+                  style={{ width: leftPadding }}
+                >
                   <div className="h-3 w-3 rounded-full" style={{ background: r.product.color }} />
                   <div className="text-sm font-medium text-zinc-950 dark:text-zinc-50">{r.product.name}</div>
                 </div>
-                <div
-                  className="absolute h-[6px] rounded-full opacity-70"
-                  style={{
-                    left: leftPadding,
-                    width: monthWidth * timelineMonths + 200,
-                    background: r.product.color,
-                  }}
-                />
+                {productExtents.get(r.product.id)?.count ? (
+                  <>
+                    <div
+                      className="absolute h-[14px] rounded-full opacity-25"
+                      style={{
+                        left: Math.max(leftPadding, productExtents.get(r.product.id)!.minX - 40),
+                        width:
+                          productExtents.get(r.product.id)!.maxX -
+                          productExtents.get(r.product.id)!.minX +
+                          80,
+                        background: r.product.color,
+                        filter: "blur(8px)",
+                      }}
+                    />
+                    <div
+                      className="absolute h-[8px] rounded-full opacity-80"
+                      style={{
+                        left: Math.max(leftPadding, productExtents.get(r.product.id)!.minX - 40),
+                        width:
+                          productExtents.get(r.product.id)!.maxX -
+                          productExtents.get(r.product.id)!.minX +
+                          80,
+                        background: r.product.color,
+                        boxShadow: "0 10px 20px rgba(0,0,0,0.12)",
+                      }}
+                    />
+                  </>
+                ) : (
+                  <div
+                    className="absolute h-[6px] rounded-full opacity-25"
+                    style={{
+                      left: leftPadding,
+                      width: monthWidth * timelineMonths + 200,
+                      background: `repeating-linear-gradient(90deg, ${r.product.color}, ${r.product.color} 10px, transparent 10px, transparent 18px)`,
+                    }}
+                  />
+                )}
               </div>
             ))}
 
             <div className="absolute left-0 top-0 right-0 bottom-0">
               <ReactFlow
                 nodes={nodes}
-                edges={[]}
+                edges={edges}
                 onNodesChange={onNodesChange}
                 fitView={false}
                 panOnScroll
