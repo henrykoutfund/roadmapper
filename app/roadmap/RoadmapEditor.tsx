@@ -6,8 +6,6 @@ import ReactFlow, {
   Controls,
   type Edge,
   type Node,
-  type NodeChange,
-  type OnNodesChange,
   Position,
   type ReactFlowInstance,
 } from "reactflow";
@@ -97,22 +95,6 @@ export default function RoadmapEditor({
     [leftPadding, monthWidth, timelineStart],
   );
 
-  const productExtents = useMemo(() => {
-    const map = new Map<string, { minX: number; maxX: number; count: number }>();
-    for (const it of items) {
-      const x = itemX(it);
-      const cur = map.get(it.product_id);
-      if (!cur) {
-        map.set(it.product_id, { minX: x, maxX: x, count: 1 });
-      } else {
-        cur.minX = Math.min(cur.minX, x);
-        cur.maxX = Math.max(cur.maxX, x);
-        cur.count += 1;
-      }
-    }
-    return map;
-  }, [itemX, items]);
-
   const selectedItem = useMemo(() => {
     if (!selectedItemId) return null;
     return items.find((it) => it.id === selectedItemId) ?? null;
@@ -152,9 +134,10 @@ export default function RoadmapEditor({
                 {it.status}
                 {it.is_public ? "" : " · internal"}
               </div>
-              {it.public_summary ? (
-                <div className="line-clamp-2 text-xs leading-5 text-zinc-600">{it.public_summary}</div>
-              ) : null}
+              <div className="inline-flex items-center gap-1 text-[11px] font-medium text-zinc-500">
+                <span>ⓘ</span>
+                <span>Click for details</span>
+              </div>
             </div>
           ),
         },
@@ -206,41 +189,6 @@ export default function RoadmapEditor({
     }
     return all;
   }, [itemX, items, productColorById]);
-
-  const onNodesChange = useCallback<OnNodesChange>(
-    async (changes: NodeChange[]) => {
-      if (!supabase) return;
-      const positionChanges = changes.filter((c) => c.type === "position" && c.dragging === false) as Array<
-        NodeChange & { type: "position"; position?: { x: number; y: number } }
-      >;
-
-      if (positionChanges.length === 0) return;
-
-      const updates = positionChanges
-        .map((c) => {
-          if (!("id" in c) || !c.position) return null;
-          return { id: c.id, position_x: Math.round(c.position.x), position_y: Math.round(c.position.y) };
-        })
-        .filter(Boolean) as Array<{ id: string; position_x: number; position_y: number }>;
-
-      if (updates.length === 0) return;
-
-      setItems((prev) =>
-        prev.map((it) => {
-          const upd = updates.find((u) => u.id === it.id);
-          return upd ? { ...it, position_x: upd.position_x, position_y: upd.position_y } : it;
-        }),
-      );
-
-      for (const upd of updates) {
-        const { error: updateError } = await supabase.from("roadmap_items").update(upd).eq("id", upd.id);
-        if (updateError) {
-          setError(updateError.message);
-        }
-      }
-    },
-    [supabase],
-  );
 
   const openItem = (id: string) => {
     const it = items.find((x) => x.id === id) ?? null;
@@ -754,7 +702,7 @@ export default function RoadmapEditor({
 
       <div className="min-w-0 rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
         <div className="border-b border-zinc-200 px-5 py-4 text-sm font-semibold text-zinc-950 dark:border-zinc-800 dark:text-zinc-50">
-          Tube map (drag nodes)
+          Tube map
         </div>
 
         <div className="relative h-[680px] overflow-auto">
@@ -780,50 +728,10 @@ export default function RoadmapEditor({
 
             {tubeRows.map((r) => (
               <div key={r.product.id} className="absolute left-0 right-0" style={{ top: r.y + 44 }}>
-                <div
-                  className="absolute left-0 top-0 flex items-center gap-3 pl-6"
-                  style={{ width: leftPadding }}
-                >
+                <div className="absolute left-0 top-0 flex items-center gap-3 pl-6" style={{ width: leftPadding }}>
                   <div className="h-3 w-3 rounded-full" style={{ background: r.product.color }} />
                   <div className="text-sm font-medium text-zinc-950 dark:text-zinc-50">{r.product.name}</div>
                 </div>
-                {productExtents.get(r.product.id)?.count ? (
-                  <>
-                    <div
-                      className="absolute h-[14px] rounded-full opacity-25"
-                      style={{
-                        left: Math.max(leftPadding, productExtents.get(r.product.id)!.minX - 40),
-                        width:
-                          productExtents.get(r.product.id)!.maxX -
-                          productExtents.get(r.product.id)!.minX +
-                          80,
-                        background: r.product.color,
-                        filter: "blur(8px)",
-                      }}
-                    />
-                    <div
-                      className="absolute h-[8px] rounded-full opacity-80"
-                      style={{
-                        left: Math.max(leftPadding, productExtents.get(r.product.id)!.minX - 40),
-                        width:
-                          productExtents.get(r.product.id)!.maxX -
-                          productExtents.get(r.product.id)!.minX +
-                          80,
-                        background: r.product.color,
-                        boxShadow: "0 10px 20px rgba(0,0,0,0.12)",
-                      }}
-                    />
-                  </>
-                ) : (
-                  <div
-                    className="absolute h-[6px] rounded-full opacity-25"
-                    style={{
-                      left: leftPadding,
-                      width: monthWidth * timelineMonths + 200,
-                      background: `repeating-linear-gradient(90deg, ${r.product.color}, ${r.product.color} 10px, transparent 10px, transparent 18px)`,
-                    }}
-                  />
-                )}
               </div>
             ))}
 
@@ -831,9 +739,11 @@ export default function RoadmapEditor({
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
-                onNodesChange={onNodesChange}
                 fitView={false}
                 panOnScroll
+                nodesDraggable={false}
+                nodesConnectable={false}
+                elementsSelectable={false}
                 onInit={setRf}
                 onNodeClick={(_, n) => openItem(n.id)}
               >

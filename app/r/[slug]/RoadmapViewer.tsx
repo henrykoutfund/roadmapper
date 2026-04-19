@@ -74,22 +74,6 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
     };
   }, [leftPadding, monthWidth, timelineStart]);
 
-  const productExtents = useMemo(() => {
-    const map = new Map<string, { minX: number; maxX: number; count: number }>();
-    for (const it of items) {
-      const x = itemX(it);
-      const cur = map.get(it.product_id);
-      if (!cur) {
-        map.set(it.product_id, { minX: x, maxX: x, count: 1 });
-      } else {
-        cur.minX = Math.min(cur.minX, x);
-        cur.maxX = Math.max(cur.maxX, x);
-        cur.count += 1;
-      }
-    }
-    return map;
-  }, [itemX, items]);
-
   const revenueSeries = useMemo(() => {
     const lowAdds = new Array<number>(timelineMonths).fill(0);
     const highAdds = new Array<number>(timelineMonths).fill(0);
@@ -202,14 +186,11 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
                   {statusLabel}
                 </div>
               </div>
-              {it.public_summary ? (
-                <div className="line-clamp-2 text-xs leading-5 text-zinc-600">{it.public_summary}</div>
-              ) : null}
               <div className="flex items-center justify-between gap-3 pt-1 text-xs text-zinc-600">
                 <div>{rev}</div>
-                <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-                  <span className="h-2 w-2 rounded-full" style={{ background: productColor }} />
-                  <span>{productById.get(it.product_id)?.name ?? "—"}</span>
+                <div className="inline-flex items-center gap-1 text-[11px] font-medium text-zinc-500">
+                  <span>ⓘ</span>
+                  <span>Click for details</span>
                 </div>
               </div>
             </div>
@@ -470,44 +451,6 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
                   <div className="h-3 w-3 rounded-full" style={{ background: r.product.color }} />
                   <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">{r.product.name}</div>
                 </button>
-                {productExtents.get(r.product.id)?.count ? (
-                  <>
-                    <div
-                      className="absolute h-[14px] rounded-full opacity-25"
-                      style={{
-                        left: Math.max(leftPadding, productExtents.get(r.product.id)!.minX - 40),
-                        width:
-                          productExtents.get(r.product.id)!.maxX -
-                          productExtents.get(r.product.id)!.minX +
-                          80,
-                        background: r.product.color,
-                        filter: "blur(8px)",
-                      }}
-                    />
-                    <div
-                      className="absolute h-[8px] rounded-full opacity-80"
-                      style={{
-                        left: Math.max(leftPadding, productExtents.get(r.product.id)!.minX - 40),
-                        width:
-                          productExtents.get(r.product.id)!.maxX -
-                          productExtents.get(r.product.id)!.minX +
-                          80,
-                        background: r.product.color,
-                        filter: "saturate(1.1)",
-                        boxShadow: "0 10px 20px rgba(0,0,0,0.12)",
-                      }}
-                    />
-                  </>
-                ) : (
-                  <div
-                    className="absolute h-[6px] rounded-full opacity-25"
-                    style={{
-                      left: leftPadding,
-                      width: monthWidth * timelineMonths + 200,
-                      background: `repeating-linear-gradient(90deg, ${r.product.color}, ${r.product.color} 10px, transparent 10px, transparent 18px)`,
-                    }}
-                  />
-                )}
               </div>
             ))}
 
