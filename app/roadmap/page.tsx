@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import SignOutButton from "./SignOutButton";
 import RoadmapEditor from "./RoadmapEditor";
 import type { ItemRow, ProductRow } from "@/lib/roadmap/types";
+import ShareSettings from "./ShareSettings";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function RoadmapPage() {
   const supabase = await createClient();
@@ -73,6 +75,17 @@ export default async function RoadmapPage() {
     );
   }
 
+  const admin = createAdminClient();
+  const { data: shares, error: shareError } = await admin
+    .from("roadmap_shares")
+    .select("*")
+    .eq("roadmap_id", roadmap.id)
+    .limit(1);
+
+  const share = !shareError ? ((shares?.[0] as { slug: string; password_hash: string | null } | undefined) ?? null) : null;
+  const shareSlug = share?.slug ?? "outfund-viceversa";
+  const hasPassword = Boolean(share?.password_hash);
+
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 px-6 py-10 font-sans dark:bg-black">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between">
@@ -91,6 +104,7 @@ export default async function RoadmapPage() {
           products={(products ?? []) as ProductRow[]}
           items={(items ?? []) as ItemRow[]}
         />
+        <ShareSettings roadmapSlug="outfund-viceversa" shareSlug={shareSlug} hasPassword={hasPassword} />
       </div>
     </div>
   );
