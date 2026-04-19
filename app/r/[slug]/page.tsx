@@ -1,6 +1,7 @@
 import Link from "next/link";
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import Image from "next/image";
 import { createAdminClient } from "@/lib/supabase/admin";
 import InvestorUnlockForm from "./InvestorUnlockForm";
 import RoadmapViewer from "./RoadmapViewer";
@@ -167,11 +168,14 @@ export default async function InvestorRoadmapPage({
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 px-6 py-10 font-sans dark:bg-black">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between">
-        <div>
-          <div className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Investor view</div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-            Outfund_ViceVersa Roadmap
-          </h1>
+        <div className="flex items-center gap-4">
+          <Image src="/branding/of_vv_logo.png" alt="Outfund ViceVersa" width={120} height={48} priority />
+          <div>
+            <div className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Investor view</div>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+              Outfund_ViceVersa Roadmap
+            </h1>
+          </div>
         </div>
         <Link
           className="inline-flex h-10 items-center justify-center rounded-full border border-zinc-200 px-4 text-sm font-medium text-zinc-950 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-900"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import ReactFlow, { Background, Controls, type Edge, type Node, Position } from "reactflow";
 import { addMonths, differenceInCalendarMonths, startOfMonth } from "date-fns";
 import "reactflow/dist/style.css";
@@ -35,6 +35,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
   const rowHeight = 120;
   const leftPadding = 300;
   const topPadding = 60;
+  const [drawer, setDrawer] = useState<{ type: "product"; id: string } | { type: "item"; id: string } | null>(null);
 
   const months = useMemo(() => {
     const list: Array<{ key: string; label: string; date: Date }> = [];
@@ -220,7 +221,8 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
           border: "1px solid rgb(228 228 231)",
           background: "rgba(255,255,255,0.92)",
           padding: 12,
-          pointerEvents: "none",
+          pointerEvents: "auto",
+          cursor: "pointer",
           boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
           backdropFilter: "blur(6px)",
           borderLeft: `6px solid ${productColor}`,
@@ -299,6 +301,46 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
 
     return { w, h, linePath, bandPath };
   }, [revenueSeries, timelineMonths]);
+
+  const selectedItem = useMemo(() => {
+    if (!drawer || drawer.type !== "item") return null;
+    return items.find((it) => it.id === drawer.id) ?? null;
+  }, [drawer, items]);
+
+  const selectedProduct = useMemo(() => {
+    if (!drawer || drawer.type !== "product") return null;
+    return productById.get(drawer.id) ?? null;
+  }, [drawer, productById]);
+
+  const selectedProductItems = useMemo(() => {
+    if (!selectedProduct) return [];
+    return items
+      .filter((it) => it.product_id === selectedProduct.id)
+      .slice()
+      .sort((a, b) => itemX(a) - itemX(b));
+  }, [itemX, items, selectedProduct]);
+
+  const selectedRange = useMemo(() => {
+    const list =
+      drawer?.type === "product"
+        ? selectedProductItems
+        : drawer?.type === "item" && selectedItem
+          ? [selectedItem]
+          : [];
+
+    const currency = list.find((it) => it.revenue_currency)?.revenue_currency ?? revenueSeries.currency;
+    let low = 0;
+    let high = 0;
+    for (const it of list) {
+      if (it.revenue_low == null && it.revenue_high == null) continue;
+      const w = confidenceWeight(it.revenue_confidence);
+      const lo = (it.revenue_low ?? 0) * w;
+      const hi = (it.revenue_high ?? it.revenue_low ?? 0) * w;
+      low += lo;
+      high += Math.max(hi, lo);
+    }
+    return { currency, low, high };
+  }, [drawer, revenueSeries.currency, selectedItem, selectedProductItems]);
 
   return (
     <div className="grid gap-6">
@@ -381,10 +423,15 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
           <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Tube map</div>
           <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
             {products.map((p) => (
-              <div key={p.id} className="flex items-center gap-2">
+              <button
+                key={p.id}
+                className="flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                onClick={() => setDrawer({ type: "product", id: p.id })}
+                type="button"
+              >
                 <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
                 <span>{p.name}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -412,13 +459,15 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
 
             {tubeRows.map((r) => (
               <div key={r.product.id} className="absolute left-0 right-0" style={{ top: r.y + 42 }}>
-                <div
-                  className="absolute left-0 top-0 flex items-center gap-3 pl-6"
+                <button
+                  className="absolute left-0 top-0 flex items-center gap-3 pl-6 text-left"
                   style={{ width: leftPadding }}
+                  onClick={() => setDrawer({ type: "product", id: r.product.id })}
+                  type="button"
                 >
                   <div className="h-3 w-3 rounded-full" style={{ background: r.product.color }} />
                   <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">{r.product.name}</div>
-                </div>
+                </button>
                 {productExtents.get(r.product.id)?.count ? (
                   <>
                     <div
@@ -461,7 +510,16 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
             ))}
 
             <div className="absolute left-0 top-0 right-0 bottom-0">
-              <ReactFlow nodes={nodes} edges={edges} fitView={false} panOnScroll nodesDraggable={false}>
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                fitView={false}
+                panOnScroll
+                nodesDraggable={false}
+                nodesConnectable={false}
+                elementsSelectable={false}
+                onNodeClick={(_, n) => setDrawer({ type: "item", id: n.id })}
+              >
                 <Background gap={28} size={1} color="rgba(0,0,0,0.06)" />
                 <Controls />
               </ReactFlow>
@@ -469,6 +527,123 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
           </div>
         </div>
       </div>
+
+      {drawer ? (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => setDrawer(null)}
+          role="presentation"
+        >
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+          <div
+            className="absolute right-0 top-0 h-full w-full max-w-md overflow-auto bg-white shadow-2xl dark:bg-zinc-950"
+            onClick={(e) => e.stopPropagation()}
+            role="presentation"
+          >
+            <div className="sticky top-0 z-10 border-b border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-zinc-500">
+                    {drawer.type === "product" ? "Product" : "Initiative"}
+                  </div>
+                  <div className="mt-1 truncate text-lg font-semibold text-zinc-950 dark:text-zinc-50">
+                    {drawer.type === "product"
+                      ? selectedProduct?.name ?? "—"
+                      : selectedItem?.title ?? "—"}
+                  </div>
+                </div>
+                <button
+                  className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 px-3 text-sm font-medium text-zinc-950 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-900"
+                  onClick={() => setDrawer(null)}
+                  type="button"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="px-5 py-5">
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="text-xs font-medium text-zinc-500">Confidence-weighted unlock</div>
+                <div className="mt-2 text-base font-semibold text-zinc-950 dark:text-zinc-50">
+                  {formatCompactCurrency(selectedRange.low, selectedRange.currency)}–{formatCompactCurrency(selectedRange.high, selectedRange.currency)}
+                </div>
+              </div>
+
+              {drawer.type === "product" ? (
+                <div className="mt-5 grid gap-4">
+                  {selectedProduct?.public_description ? (
+                    <div className="text-sm leading-6 text-zinc-700 dark:text-zinc-300">
+                      {selectedProduct.public_description}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                      No product description yet.
+                    </div>
+                  )}
+
+                  <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+                    Initiatives
+                  </div>
+                  <div className="grid gap-2">
+                    {selectedProductItems.length ? (
+                      selectedProductItems.map((it) => (
+                        <button
+                          key={it.id}
+                          className="rounded-xl border border-zinc-200 bg-white p-3 text-left hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                          onClick={() => setDrawer({ type: "item", id: it.id })}
+                          type="button"
+                        >
+                          <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">{it.title}</div>
+                          {it.public_summary ? (
+                            <div className="mt-1 text-xs leading-5 text-zinc-600 dark:text-zinc-400">
+                              {it.public_summary}
+                            </div>
+                          ) : null}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="text-sm text-zinc-600 dark:text-zinc-400">No initiatives yet.</div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-5 grid gap-4">
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                    {selectedItem ? (productById.get(selectedItem.product_id)?.name ?? "—") : "—"}
+                  </div>
+
+                  {selectedItem?.public_summary ? (
+                    <div className="text-sm leading-6 text-zinc-700 dark:text-zinc-300">
+                      {selectedItem.public_summary}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                      No description yet.
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                      <div className="text-xs font-medium text-zinc-500">Status</div>
+                      <div className="mt-1 font-semibold text-zinc-950 dark:text-zinc-50">
+                        {selectedItem?.status ?? "—"}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                      <div className="text-xs font-medium text-zinc-500">Timing</div>
+                      <div className="mt-1 font-semibold text-zinc-950 dark:text-zinc-50">
+                        {selectedItem?.start_date ?? "—"}
+                        {selectedItem?.end_date ? ` → ${selectedItem.end_date}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

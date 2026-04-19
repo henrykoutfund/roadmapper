@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import Image from "next/image";
 import SignOutButton from "./SignOutButton";
 import RoadmapEditor from "./RoadmapEditor";
 import type { ItemRow, ProductRow } from "@/lib/roadmap/types";
@@ -89,11 +90,14 @@ export default async function RoadmapPage() {
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 px-6 py-10 font-sans dark:bg-black">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-            Roadmap (internal)
-          </h1>
-          <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{user.email}</div>
+        <div className="flex items-center gap-4">
+          <Image src="/branding/of_vv_logo.png" alt="Outfund ViceVersa" width={120} height={48} priority />
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+              Roadmap (internal)
+            </h1>
+            <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{user.email}</div>
+          </div>
         </div>
         <SignOutButton />
       </div>

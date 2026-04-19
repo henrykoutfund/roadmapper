@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import Image from "next/image";
 
 export default async function Home({
   searchParams,
@@ -21,6 +22,15 @@ export default async function Home({
   return (
     <div className="flex flex-1 items-center justify-center bg-zinc-50 px-6 font-sans dark:bg-black">
       <main className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="mb-6 flex items-center gap-4">
+          <Image
+            src="/branding/of_vv_logo.png"
+            alt="Outfund ViceVersa"
+            width={140}
+            height={56}
+            priority
+          />
+        </div>
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
           Outfund_ViceVersa Roadmap
         </h1>

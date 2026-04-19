@@ -14,6 +14,8 @@ export type ProductRow = {
   roadmap_id: string;
   name: string;
   color: string;
+  public_description?: string | null;
+  internal_notes?: string | null;
   sort_order: number;
   created_at: string;
 };

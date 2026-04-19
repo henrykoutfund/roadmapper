@@ -48,6 +48,8 @@ export default function RoadmapEditor({
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [itemDraft, setItemDraft] = useState<Partial<ItemRow>>({});
   const [productNameDrafts, setProductNameDrafts] = useState<Record<string, string>>({});
+  const [selectedProductEditId, setSelectedProductEditId] = useState<string | null>(null);
+  const [productDraft, setProductDraft] = useState<Partial<ProductRow>>({});
   const [newProductName, setNewProductName] = useState("");
   const [newProductColor, setNewProductColor] = useState("#2563eb");
   const [saving, setSaving] = useState(false);
@@ -441,6 +443,48 @@ export default function RoadmapEditor({
     }
   };
 
+  const openProductDetails = (productId: string) => {
+    const p = products.find((x) => x.id === productId) ?? null;
+    if (!p) return;
+    setSelectedProductEditId(productId);
+    setProductDraft({
+      id: p.id,
+      name: p.name,
+      public_description: p.public_description ?? "",
+      internal_notes: p.internal_notes ?? "",
+    });
+  };
+
+  const saveProductDetails = async () => {
+    if (!supabase) return;
+    if (!selectedProductEditId) return;
+    setSaving(true);
+    setError("");
+
+    const payload: Partial<ProductRow> = {
+      public_description: (productDraft.public_description as string | undefined) ?? null,
+      internal_notes: (productDraft.internal_notes as string | undefined) ?? null,
+    };
+
+    const { error: updateError } = await supabase
+      .from("roadmap_products")
+      .update(payload)
+      .eq("id", selectedProductEditId);
+
+    if (updateError) {
+      setSaving(false);
+      setError(updateError.message);
+      return;
+    }
+
+    setProducts((prev) =>
+      prev.map((p) => (p.id === selectedProductEditId ? ({ ...p, ...payload } as ProductRow) : p)),
+    );
+    setSaving(false);
+    setSelectedProductEditId(null);
+    setProductDraft({});
+  };
+
   const reorderProduct = async (productId: string, direction: "up" | "down") => {
     if (!supabase) return;
     const idx = products.findIndex((p) => p.id === productId);
@@ -647,7 +691,7 @@ export default function RoadmapEditor({
               {products.map((p, idx) => (
                 <div
                   key={p.id}
-                  className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 rounded-xl border border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900"
+                  className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 rounded-xl border border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900"
                 >
                   <input
                     className="h-9 rounded-lg border border-zinc-200 bg-white px-2 text-sm text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
@@ -666,6 +710,13 @@ export default function RoadmapEditor({
                     value={p.color}
                     onChange={(e) => setProductColor(p.id, e.target.value)}
                   />
+                  <button
+                    className="h-9 w-9 rounded-lg border border-zinc-200 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                    onClick={() => openProductDetails(p.id)}
+                    type="button"
+                  >
+                    ⋯
+                  </button>
                   <button
                     className="h-9 w-9 rounded-lg border border-zinc-200 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800"
                     disabled={idx === 0}
@@ -788,6 +839,67 @@ export default function RoadmapEditor({
           </div>
         </div>
       </div>
+
+      {selectedProductEditId ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/20 p-4 sm:items-center">
+          <div className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-6 shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Edit product</div>
+                <div className="mt-1 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
+                  {(products.find((p) => p.id === selectedProductEditId)?.name ?? "").trim() || "Product"}
+                </div>
+              </div>
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-full border border-zinc-200 px-4 text-sm font-medium text-zinc-950 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-900"
+                onClick={() => {
+                  setSelectedProductEditId(null);
+                  setProductDraft({});
+                  setError("");
+                }}
+                type="button"
+              >
+                Close
+              </button>
+            </div>
+
+            {error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
+
+            <div className="mt-5 grid gap-4 text-sm">
+              <label className="grid gap-1">
+                <div className="text-zinc-600 dark:text-zinc-400">Public description (investor)</div>
+                <textarea
+                  className="min-h-28 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50"
+                  value={(productDraft.public_description as string | undefined) ?? ""}
+                  onChange={(e) => setProductDraft((p) => ({ ...p, public_description: e.target.value }))}
+                  placeholder="What is this product line, and why does it matter?"
+                />
+              </label>
+
+              <label className="grid gap-1">
+                <div className="text-zinc-600 dark:text-zinc-400">Internal notes</div>
+                <textarea
+                  className="min-h-28 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50"
+                  value={(productDraft.internal_notes as string | undefined) ?? ""}
+                  onChange={(e) => setProductDraft((p) => ({ ...p, internal_notes: e.target.value }))}
+                  placeholder="Internal context (not for investors)."
+                />
+              </label>
+
+              <div className="mt-2">
+                <button
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+                  onClick={saveProductDetails}
+                  disabled={saving}
+                  type="button"
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {selectedItem ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/20 p-4 sm:items-center">
