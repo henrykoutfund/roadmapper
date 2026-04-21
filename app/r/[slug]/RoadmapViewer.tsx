@@ -44,6 +44,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
   const leftPadding = 240;
   const topPadding = 60;
   const nodeWidth = 210;
+  const laneOffset = 22;
   const [drawer, setDrawer] = useState<{ type: "product"; id: string } | { type: "item"; id: string } | null>(null);
 
   const months = useMemo(() => {
@@ -87,7 +88,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
     return (d: Date) => leftPadding + clamp(differenceInCalendarMonths(startOfMonth(d), timelineStart), 0, 36) * monthWidth;
   }, [leftPadding, monthWidth, timelineStart]);
 
-  const tubeSegments = useMemo(() => {
+  const tubeLanes = useMemo(() => {
     const byProduct = new Map<string, ItemRow[]>();
     for (const it of items) {
       const list = byProduct.get(it.product_id);
@@ -105,7 +106,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
 
     return products.map((p, idx) => {
       const list = byProduct.get(p.id) ?? [];
-      const raw = list
+      const intervals = list
         .map((it) => {
           const start =
             it.start_date != null
@@ -117,36 +118,51 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
                   : null;
           const end = it.end_date != null ? new Date(it.end_date) : it.start_date != null ? new Date(it.start_date) : null;
           if (!start || !end) return null;
+
           const startX = xForMonth(start);
           const endX = xForMonth(end) + nodeWidth / 2;
+          const left = Math.min(startX, endX);
+          const right = Math.max(startX, endX);
+
           return {
-            left: Math.min(startX, endX),
-            right: Math.max(startX, endX),
+            id: it.id,
+            startX: left,
+            left,
+            right,
             opacity: opacityForStatus(it.status),
           };
         })
         .filter((v): v is NonNullable<typeof v> => Boolean(v))
         .sort((a, b) => a.left - b.left);
 
-      const merged: Array<{ left: number; right: number; opacity: number }> = [];
-      for (const seg of raw) {
-        const last = merged[merged.length - 1];
-        if (!last || seg.left > last.right) {
-          merged.push({ ...seg });
-          continue;
-        }
-        last.right = Math.max(last.right, seg.right);
-        last.opacity = Math.max(last.opacity, seg.opacity);
+      const lanes: Array<Array<{ id: string; left: number; right: number; startX: number; opacity: number; attachLane: number }>> =
+        [];
+      const lastRightByLane: number[] = [];
+
+      for (const seg of intervals) {
+        let lane = lastRightByLane.findIndex((r) => seg.left >= r);
+        if (lane === -1) lane = lastRightByLane.length;
+
+        const attachLane = (() => {
+          if (lane === 0) return 0;
+          for (let a = 0; a < lane; a += 1) {
+            const prev = lanes[a];
+            const hit = prev?.some((s) => s.left <= seg.startX && seg.startX <= s.right);
+            if (hit) return a;
+          }
+          return 0;
+        })();
+
+        if (!lanes[lane]) lanes[lane] = [];
+        lanes[lane].push({ ...seg, attachLane });
+        lastRightByLane[lane] = seg.right;
       }
 
-      const segments = merged.map((m, i) => ({
-        id: `seg-${p.id}-${i}`,
-        left: m.left,
-        width: Math.max(10, m.right - m.left),
-        opacity: m.opacity,
-      }));
-
-      return { productId: p.id, y: topPadding + idx * rowHeight + 70, segments };
+      return {
+        productId: p.id,
+        baseY: topPadding + idx * rowHeight + 70,
+        lanes,
+      };
     });
   }, [items, nodeWidth, products, rowHeight, timelineStart, topPadding, xForMonth]);
 
@@ -508,25 +524,49 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
               </div>
             ))}
 
-            {tubeSegments.map((row) => {
+            {tubeLanes.map((row) => {
               const productColor = productColorById.get(row.productId) ?? "#0ea5e9";
               return (
-                <div key={row.productId} className="absolute left-0 right-0" style={{ top: row.y }}>
-                  {row.segments.map((s) => (
-                    <div
-                      key={s.id}
-                      className="absolute rounded-full"
-                      style={{
-                        left: s.left,
-                        width: s.width,
-                        height: 12,
-                        transform: "translateY(-50%)",
-                        background: productColor,
-                        opacity: s.opacity,
-                        filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.12))",
-                      }}
-                    />
-                  ))}
+                <div key={row.productId} className="absolute left-0 right-0" style={{ top: row.baseY }}>
+                  {row.lanes.map((lane, laneIdx) => {
+                    const y = laneIdx * laneOffset;
+                    return (
+                      <div key={`${row.productId}-lane-${laneIdx}`} className="absolute left-0 right-0" style={{ top: y }}>
+                        {laneIdx > 0
+                          ? lane.map((s) => (
+                              <div
+                                key={`c-${s.id}`}
+                                className="absolute rounded-full"
+                                style={{
+                                  left: s.startX,
+                                  width: 12,
+                                  height: Math.max(12, laneIdx - s.attachLane) * laneOffset,
+                                  top: -((laneIdx - s.attachLane) * laneOffset),
+                                  background: productColor,
+                                  opacity: Math.min(0.7, s.opacity),
+                                  filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.08))",
+                                }}
+                              />
+                            ))
+                          : null}
+                        {lane.map((s) => (
+                          <div
+                            key={s.id}
+                            className="absolute rounded-full"
+                            style={{
+                              left: s.left,
+                              width: Math.max(10, s.right - s.left),
+                              height: 12,
+                              transform: "translateY(-50%)",
+                              background: productColor,
+                              opacity: s.opacity,
+                              filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.12))",
+                            }}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
