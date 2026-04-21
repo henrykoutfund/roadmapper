@@ -43,6 +43,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
   const rowHeight = 120;
   const leftPadding = 240;
   const topPadding = 60;
+  const nodeWidth = 210;
   const [drawer, setDrawer] = useState<{ type: "product"; id: string } | { type: "item"; id: string } | null>(null);
 
   const months = useMemo(() => {
@@ -72,15 +73,59 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
 
   const itemX = useMemo(() => {
     return (it: ItemRow) => {
-      const start = it.start_date ? startOfMonth(new Date(it.start_date)) : null;
+      const anchor = it.end_date ? startOfMonth(new Date(it.end_date)) : it.start_date ? startOfMonth(new Date(it.start_date)) : null;
       return (
         it.position_x ??
-        (start
-          ? leftPadding + clamp(differenceInCalendarMonths(start, timelineStart), 0, 36) * monthWidth
+        (anchor
+          ? leftPadding + clamp(differenceInCalendarMonths(anchor, timelineStart), 0, 36) * monthWidth
           : leftPadding)
       );
     };
   }, [leftPadding, monthWidth, timelineStart]);
+
+  const xForMonth = useMemo(() => {
+    return (d: Date) => leftPadding + clamp(differenceInCalendarMonths(startOfMonth(d), timelineStart), 0, 36) * monthWidth;
+  }, [leftPadding, monthWidth, timelineStart]);
+
+  const tubeSegments = useMemo(() => {
+    const byProduct = new Map<string, ItemRow[]>();
+    for (const it of items) {
+      const list = byProduct.get(it.product_id);
+      if (list) list.push(it);
+      else byProduct.set(it.product_id, [it]);
+    }
+
+    const opacityForStatus = (status: string) => {
+      if (status === "in_progress") return 0.9;
+      if (status === "planned") return 0.55;
+      if (status === "done") return 0.22;
+      if (status === "on_hold") return 0.22;
+      return 0.35;
+    };
+
+    return products.map((p, idx) => {
+      const list = byProduct.get(p.id) ?? [];
+      const segments = list
+        .map((it) => {
+          const start = it.start_date ? new Date(it.start_date) : it.end_date ? new Date(it.end_date) : null;
+          const end = it.end_date ? new Date(it.end_date) : it.start_date ? new Date(it.start_date) : null;
+          if (!start || !end) return null;
+          const startX = xForMonth(start);
+          const endX = xForMonth(end) + nodeWidth / 2;
+          const left = Math.min(startX, endX);
+          const right = Math.max(startX, endX);
+          return {
+            id: it.id,
+            left,
+            width: Math.max(10, right - left),
+            opacity: opacityForStatus(it.status),
+          };
+        })
+        .filter((v): v is NonNullable<typeof v> => Boolean(v));
+
+      return { productId: p.id, y: topPadding + idx * rowHeight + 70, segments };
+    });
+  }, [items, nodeWidth, products, rowHeight, topPadding, xForMonth]);
 
   const revenueSeries = useMemo(() => {
     const lowAdds = new Array<number>(timelineMonths).fill(0);
@@ -155,11 +200,11 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
     const productIndex = new Map(products.map((p, idx) => [p.id, idx] as const));
     return items.map((it) => {
       const idx = productIndex.get(it.product_id) ?? 0;
-      const start = it.start_date ? startOfMonth(new Date(it.start_date)) : null;
+      const anchor = it.end_date ? startOfMonth(new Date(it.end_date)) : it.start_date ? startOfMonth(new Date(it.start_date)) : null;
       const x =
         it.position_x ??
-        (start
-          ? leftPadding + clamp(differenceInCalendarMonths(start, timelineStart), 0, 36) * monthWidth
+        (anchor
+          ? leftPadding + clamp(differenceInCalendarMonths(anchor, timelineStart), 0, 36) * monthWidth
           : leftPadding);
       const y = it.position_y ?? topPadding + idx * rowHeight;
 
@@ -469,6 +514,29 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
                 </button>
               </div>
             ))}
+
+            {tubeSegments.map((row) => {
+              const productColor = productColorById.get(row.productId) ?? "#0ea5e9";
+              return (
+                <div key={row.productId} className="absolute left-0 right-0" style={{ top: row.y }}>
+                  {row.segments.map((s) => (
+                    <div
+                      key={s.id}
+                      className="absolute rounded-full"
+                      style={{
+                        left: s.left,
+                        width: s.width,
+                        height: 12,
+                        transform: "translateY(-50%)",
+                        background: productColor,
+                        opacity: s.opacity,
+                        filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.12))",
+                      }}
+                    />
+                  ))}
+                </div>
+              );
+            })}
 
             <div className="absolute left-0 top-0 right-0 bottom-0">
               <ReactFlow
