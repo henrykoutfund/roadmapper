@@ -65,17 +65,25 @@ export default function RoadmapEditor({
   const [showTubeMap, setShowTubeMap] = useState(false);
 
   const timelineStart = useMemo(() => startOfMonth(new Date()), []);
-  const timelineMonths = 12;
+  const timelineMonths = useMemo(() => {
+    const maxDate = items
+      .map((it) => {
+        const s = it.end_date ?? it.start_date;
+        return s ? startOfMonth(new Date(s)) : null;
+      })
+      .filter((d): d is Date => Boolean(d))
+      .reduce<Date | null>((m, d) => (!m || d > m ? d : m), null);
+
+    if (!maxDate) return 24;
+    const needed = differenceInCalendarMonths(maxDate, timelineStart) + 1;
+    return Math.max(24, needed + 12);
+  }, [items, timelineStart]);
   const monthWidth = 180;
   const rowHeight = 160;
   const leftPadding = 240;
   const topPadding = 60;
   const nodeWidth = 210;
   const laneOffset = 46;
-
-  const timelineEnd = useMemo(() => startOfMonth(addMonths(timelineStart, timelineMonths - 1)), [timelineMonths, timelineStart]);
-  const timelineRightX = useMemo(() => leftPadding + monthWidth * timelineMonths, [leftPadding, monthWidth, timelineMonths]);
-  const timelineMaxRightX = useMemo(() => timelineRightX + nodeWidth / 2, [nodeWidth, timelineRightX]);
 
   const months = useMemo(() => {
     const list: Array<{ key: string; label: string }> = [];
@@ -84,7 +92,7 @@ export default function RoadmapEditor({
       list.push({ key: monthKey(d), label: d.toLocaleString(undefined, { month: "short", year: "numeric" }) });
     }
     return list;
-  }, [timelineStart]);
+  }, [timelineMonths, timelineStart]);
 
   const tubeRows = useMemo(() => {
     return products.map((p, idx) => ({
@@ -133,14 +141,18 @@ export default function RoadmapEditor({
                 : it.end_date != null
                   ? new Date(it.end_date)
                   : null;
-          const end = it.end_date != null ? new Date(it.end_date) : it.start_date != null ? new Date(it.start_date) : null;
+          const end =
+            it.end_date != null
+              ? new Date(it.end_date)
+              : it.start_date != null
+                ? new Date(it.start_date)
+                : it.status === "in_progress"
+                  ? timelineStart
+                  : null;
           if (!start || !end) return null;
 
-          const clippedStart = start < timelineStart ? timelineStart : start > timelineEnd ? timelineEnd : start;
-          const clippedEnd = end < timelineStart ? timelineStart : end > timelineEnd ? timelineEnd : end;
-
-          const startX = start < timelineStart ? leftPadding : xForMonth(clippedStart);
-          const endX = end > timelineEnd ? timelineMaxRightX : xForMonth(clippedEnd) + nodeWidth / 2;
+          const startX = xForMonth(start);
+          const endX = xForMonth(end) + nodeWidth / 2;
           const left = Math.min(startX, endX);
           const right = Math.max(startX, endX);
 
@@ -172,18 +184,7 @@ export default function RoadmapEditor({
         lanes,
       };
     });
-  }, [
-    items,
-    leftPadding,
-    nodeWidth,
-    products,
-    rowHeight,
-    timelineEnd,
-    timelineMaxRightX,
-    timelineStart,
-    topPadding,
-    xForMonth,
-  ]);
+  }, [items, nodeWidth, products, rowHeight, timelineStart, topPadding, xForMonth]);
 
   const laneIndexByItemId = useMemo(() => {
     const map = new Map<string, number>();
@@ -206,7 +207,13 @@ export default function RoadmapEditor({
     return items.map((it) => {
       const idx = productIndex.get(it.product_id) ?? 0;
       const laneIdx = laneIndexByItemId.get(it.id) ?? 0;
-      const anchor = it.end_date ? startOfMonth(new Date(it.end_date)) : it.start_date ? startOfMonth(new Date(it.start_date)) : null;
+      const anchor = it.end_date
+        ? startOfMonth(new Date(it.end_date))
+        : it.start_date
+          ? startOfMonth(new Date(it.start_date))
+          : it.status === "in_progress"
+            ? timelineStart
+            : null;
       const x =
         anchor != null
           ? leftPadding +

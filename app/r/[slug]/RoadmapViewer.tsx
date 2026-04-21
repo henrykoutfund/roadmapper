@@ -38,7 +38,17 @@ function formatCompactCurrency(amount: number, currencySymbol: string) {
 
 export default function RoadmapViewer({ products, items }: { products: ProductRow[]; items: ItemRow[] }) {
   const timelineStart = useMemo(() => startOfMonth(new Date()), []);
-  const timelineMonths = 12;
+  const chartMonths = 12;
+  const timelineMonths = useMemo(() => {
+    const maxDate = items
+      .map((it) => (it.end_date ?? it.start_date ? startOfMonth(new Date(it.end_date ?? it.start_date ?? "")) : null))
+      .filter((d): d is Date => Boolean(d))
+      .reduce<Date | null>((m, d) => (!m || d > m ? d : m), null);
+
+    if (!maxDate) return 18;
+    const needed = differenceInCalendarMonths(maxDate, timelineStart) + 1;
+    return Math.max(18, needed + 3);
+  }, [items, timelineStart]);
   const monthWidth = 180;
   const rowHeight = 160;
   const leftPadding = 240;
@@ -46,10 +56,6 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
   const nodeWidth = 210;
   const laneOffset = 46;
   const [drawer, setDrawer] = useState<{ type: "product"; id: string } | { type: "item"; id: string } | null>(null);
-
-  const timelineEnd = useMemo(() => startOfMonth(addMonths(timelineStart, timelineMonths - 1)), [timelineMonths, timelineStart]);
-  const timelineRightX = useMemo(() => leftPadding + monthWidth * timelineMonths, [leftPadding, monthWidth, timelineMonths]);
-  const timelineMaxRightX = useMemo(() => timelineRightX + nodeWidth / 2, [nodeWidth, timelineRightX]);
 
   const months = useMemo(() => {
     const list: Array<{ key: string; label: string; date: Date }> = [];
@@ -62,7 +68,16 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
       });
     }
     return list;
-  }, [timelineStart]);
+  }, [timelineMonths, timelineStart]);
+
+  const chartMonthLabels = useMemo(() => {
+    const list: Array<{ key: string; label: string }> = [];
+    for (let i = 0; i < chartMonths; i += 1) {
+      const d = addMonths(timelineStart, i);
+      list.push({ key: monthKey(d), label: d.toLocaleString(undefined, { month: "short", year: "numeric" }) });
+    }
+    return list;
+  }, [chartMonths, timelineStart]);
 
   const productById = useMemo(() => {
     const map = new Map<string, ProductRow>();
@@ -78,7 +93,13 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
 
   const itemX = useMemo(() => {
     return (it: ItemRow) => {
-      const anchor = it.end_date ? startOfMonth(new Date(it.end_date)) : it.start_date ? startOfMonth(new Date(it.start_date)) : null;
+      const anchor = it.end_date
+        ? startOfMonth(new Date(it.end_date))
+        : it.start_date
+          ? startOfMonth(new Date(it.start_date))
+          : it.status === "in_progress"
+            ? timelineStart
+            : null;
       return anchor != null
         ? leftPadding + clamp(differenceInCalendarMonths(anchor, timelineStart), 0, Math.max(timelineMonths - 1, 0)) * monthWidth
         : leftPadding;
@@ -119,14 +140,18 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
                 : it.end_date != null
                   ? new Date(it.end_date)
                   : null;
-          const end = it.end_date != null ? new Date(it.end_date) : it.start_date != null ? new Date(it.start_date) : null;
+          const end =
+            it.end_date != null
+              ? new Date(it.end_date)
+              : it.start_date != null
+                ? new Date(it.start_date)
+                : it.status === "in_progress"
+                  ? timelineStart
+                  : null;
           if (!start || !end) return null;
 
-          const clippedStart = start < timelineStart ? timelineStart : start > timelineEnd ? timelineEnd : start;
-          const clippedEnd = end < timelineStart ? timelineStart : end > timelineEnd ? timelineEnd : end;
-
-          const startX = start < timelineStart ? leftPadding : xForMonth(clippedStart);
-          const endX = end > timelineEnd ? timelineMaxRightX : xForMonth(clippedEnd) + nodeWidth / 2;
+          const startX = xForMonth(start);
+          const endX = xForMonth(end) + nodeWidth / 2;
           const left = Math.min(startX, endX);
           const right = Math.max(startX, endX);
 
@@ -160,12 +185,9 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
     });
   }, [
     items,
-    leftPadding,
     nodeWidth,
     products,
     rowHeight,
-    timelineEnd,
-    timelineMaxRightX,
     timelineStart,
     topPadding,
     xForMonth,
@@ -182,8 +204,8 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
   }, [tubeLanes]);
 
   const revenueSeries = useMemo(() => {
-    const lowAdds = new Array<number>(timelineMonths).fill(0);
-    const highAdds = new Array<number>(timelineMonths).fill(0);
+    const lowAdds = new Array<number>(chartMonths).fill(0);
+    const highAdds = new Array<number>(chartMonths).fill(0);
 
     const currency = items.find((it) => it.revenue_currency)?.revenue_currency ?? "£";
 
@@ -192,7 +214,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
       if (!d) continue;
       if (it.revenue_low == null && it.revenue_high == null) continue;
 
-      const idx = clamp(differenceInCalendarMonths(startOfMonth(new Date(d)), timelineStart), 0, timelineMonths - 1);
+      const idx = clamp(differenceInCalendarMonths(startOfMonth(new Date(d)), timelineStart), 0, chartMonths - 1);
       const w = confidenceWeight(it.revenue_confidence);
 
       const low = (it.revenue_low ?? 0) * w;
@@ -206,7 +228,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
     const highCum: number[] = [];
     let lo = 0;
     let hi = 0;
-    for (let i = 0; i < timelineMonths; i += 1) {
+    for (let i = 0; i < chartMonths; i += 1) {
       lo += lowAdds[i];
       hi += highAdds[i];
       lowCum.push(lo);
@@ -214,7 +236,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
     }
 
     return { currency, lowCum, highCum };
-  }, [items, timelineMonths, timelineStart]);
+  }, [chartMonths, items, timelineStart]);
 
   const headlineMetrics = useMemo(() => {
     const currency = revenueSeries.currency;
@@ -255,7 +277,13 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
     return items.map((it) => {
       const idx = productIndex.get(it.product_id) ?? 0;
       const laneIdx = laneIndexByItemId.get(it.id) ?? 0;
-      const anchor = it.end_date ? startOfMonth(new Date(it.end_date)) : it.start_date ? startOfMonth(new Date(it.start_date)) : null;
+      const anchor = it.end_date
+        ? startOfMonth(new Date(it.end_date))
+        : it.start_date
+          ? startOfMonth(new Date(it.start_date))
+          : it.status === "in_progress"
+            ? timelineStart
+            : null;
       const x =
         anchor != null
           ? leftPadding +
@@ -358,12 +386,12 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
 
     const max = Math.max(...revenueSeries.highCum, 1);
     const pointsLow = revenueSeries.lowCum.map((v, i) => {
-      const x = padX + (i / Math.max(timelineMonths - 1, 1)) * innerW;
+      const x = padX + (i / Math.max(chartMonths - 1, 1)) * innerW;
       const y = padY + (1 - v / max) * innerH;
       return { x, y };
     });
     const pointsHigh = revenueSeries.highCum.map((v, i) => {
-      const x = padX + (i / Math.max(timelineMonths - 1, 1)) * innerW;
+      const x = padX + (i / Math.max(chartMonths - 1, 1)) * innerW;
       const y = padY + (1 - v / max) * innerH;
       return { x, y };
     });
@@ -382,7 +410,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
     ].join(" ");
 
     return { w, h, linePath, bandPath };
-  }, [revenueSeries, timelineMonths]);
+  }, [chartMonths, revenueSeries]);
 
   const selectedItem = useMemo(() => {
     if (!drawer || drawer.type !== "item") return null;
@@ -490,7 +518,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
             </div>
 
             <div className="mt-3 grid grid-cols-4 gap-2 text-xs text-zinc-500">
-              {months.map((m, idx) => (
+              {chartMonthLabels.map((m, idx) => (
                 <div key={m.key} className="truncate">
                   {idx % 3 === 0 ? m.label : ""}
                 </div>
