@@ -58,17 +58,20 @@ export default function RoadmapEditor({
   const [productDraft, setProductDraft] = useState<Partial<ProductRow>>({});
   const [newProductName, setNewProductName] = useState("");
   const [newProductColor, setNewProductColor] = useState("#2563eb");
+  const [newProductPublicDescription, setNewProductPublicDescription] = useState("");
+  const [newProductInternalNotes, setNewProductInternalNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [rf, setRf] = useState<ReactFlowInstance | null>(null);
+  const [showTubeMap, setShowTubeMap] = useState(false);
 
   const timelineStart = useMemo(() => startOfMonth(new Date()), []);
   const timelineMonths = 12;
   const monthWidth = 180;
-  const rowHeight = 120;
+  const rowHeight = 160;
   const leftPadding = 240;
   const topPadding = 60;
   const nodeWidth = 210;
-  const laneOffset = 22;
+  const laneOffset = 46;
 
   const months = useMemo(() => {
     const list: Array<{ key: string; label: string }> = [];
@@ -93,8 +96,10 @@ export default function RoadmapEditor({
   }, [products]);
 
   const xForMonth = useMemo(() => {
-    return (d: Date) => leftPadding + clamp(differenceInCalendarMonths(startOfMonth(d), timelineStart), 0, 36) * monthWidth;
-  }, [leftPadding, monthWidth, timelineStart]);
+    return (d: Date) =>
+      leftPadding +
+      clamp(differenceInCalendarMonths(startOfMonth(d), timelineStart), 0, Math.max(timelineMonths - 1, 0)) * monthWidth;
+  }, [leftPadding, monthWidth, timelineMonths, timelineStart]);
 
   const tubeLanes = useMemo(() => {
     const byProduct = new Map<string, ItemRow[]>();
@@ -162,6 +167,16 @@ export default function RoadmapEditor({
     });
   }, [items, nodeWidth, products, rowHeight, timelineStart, topPadding, xForMonth]);
 
+  const laneIndexByItemId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of tubeLanes) {
+      row.lanes.forEach((lane, idx) => {
+        for (const seg of lane) map.set(seg.id, idx);
+      });
+    }
+    return map;
+  }, [tubeLanes]);
+
   const selectedItem = useMemo(() => {
     if (!selectedItemId) return null;
     return items.find((it) => it.id === selectedItemId) ?? null;
@@ -172,9 +187,14 @@ export default function RoadmapEditor({
 
     return items.map((it) => {
       const idx = productIndex.get(it.product_id) ?? 0;
+      const laneIdx = laneIndexByItemId.get(it.id) ?? 0;
       const anchor = it.end_date ? startOfMonth(new Date(it.end_date)) : it.start_date ? startOfMonth(new Date(it.start_date)) : null;
-      const x = anchor ? leftPadding + clamp(differenceInCalendarMonths(anchor, timelineStart), 0, 36) * monthWidth : leftPadding;
-      const y = topPadding + idx * rowHeight;
+      const x =
+        anchor != null
+          ? leftPadding +
+            clamp(differenceInCalendarMonths(anchor, timelineStart), 0, Math.max(timelineMonths - 1, 0)) * monthWidth
+          : leftPadding;
+      const y = topPadding + idx * rowHeight + laneIdx * laneOffset;
 
       const rev = (() => {
         if (it.revenue_low == null && it.revenue_high == null) return "—";
@@ -221,7 +241,20 @@ export default function RoadmapEditor({
         },
       };
     });
-  }, [items, leftPadding, monthWidth, productColorById, products, selectedItemId, timelineStart]);
+  }, [
+    items,
+    laneIndexByItemId,
+    laneOffset,
+    leftPadding,
+    monthWidth,
+    productColorById,
+    products,
+    selectedItemId,
+    timelineMonths,
+    timelineStart,
+    topPadding,
+    rowHeight,
+  ]);
 
   const edges = useMemo<Edge[]>(() => {
     return [];
@@ -395,6 +428,8 @@ export default function RoadmapEditor({
         name,
         color: newProductColor,
         sort_order: maxSortOrder + 1,
+        public_description: newProductPublicDescription.trim() || null,
+        internal_notes: newProductInternalNotes.trim() || null,
       })
       .select("*")
       .single();
@@ -408,6 +443,8 @@ export default function RoadmapEditor({
     setProducts((prev) => [...prev, p]);
     setSelectedProductId(p.id);
     setNewProductName("");
+    setNewProductPublicDescription("");
+    setNewProductInternalNotes("");
     setError("");
   };
 
@@ -677,6 +714,26 @@ export default function RoadmapEditor({
               </button>
             </div>
 
+            <label className="grid gap-1">
+              <div className="text-zinc-600 dark:text-zinc-400">Public description (investor)</div>
+              <textarea
+                className="min-h-20 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50"
+                value={newProductPublicDescription}
+                onChange={(e) => setNewProductPublicDescription(e.target.value)}
+                placeholder="What is this product line, and why does it matter?"
+              />
+            </label>
+
+            <label className="grid gap-1">
+              <div className="text-zinc-600 dark:text-zinc-400">Internal notes</div>
+              <textarea
+                className="min-h-20 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50"
+                value={newProductInternalNotes}
+                onChange={(e) => setNewProductInternalNotes(e.target.value)}
+                placeholder="Internal context (not for investors)."
+              />
+            </label>
+
             <div className="grid gap-2">
               {products.map((p, idx) => (
                 <div
@@ -738,95 +795,209 @@ export default function RoadmapEditor({
       </div>
 
       <div className="min-w-0 rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="border-b border-zinc-200 px-5 py-4 text-sm font-semibold text-zinc-950 dark:border-zinc-800 dark:text-zinc-50">
-          Tube map
+        <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+          <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Roadmap</div>
+          <button
+            className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-950 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50 dark:hover:bg-zinc-900"
+            onClick={() => setShowTubeMap(true)}
+            type="button"
+          >
+            Open tube map
+          </button>
         </div>
 
-        <div className="relative h-[680px] overflow-auto">
-          <div
-            className="absolute left-0 top-0"
-            style={{
-              width: leftPadding + monthWidth * timelineMonths + 280,
-              height: topPadding + rowHeight * tubeRows.length + 200,
-            }}
-          >
-            <div className="sticky top-0 z-10 flex bg-white/90 backdrop-blur dark:bg-zinc-950/80">
-              <div style={{ width: leftPadding }} />
-              {months.map((m) => (
-                <div
-                  key={m.key}
-                  className="border-l border-zinc-100 py-3 text-center text-xs font-medium text-zinc-500 dark:border-zinc-900 dark:text-zinc-500"
-                  style={{ width: monthWidth }}
-                >
-                  {m.label}
-                </div>
-              ))}
-            </div>
+        <div className="max-h-[680px] overflow-auto p-5">
+          <div className="grid gap-6">
+            {products.map((p) => {
+              const productItems = items
+                .filter((it) => it.product_id === p.id)
+                .slice()
+                .sort((a, b) => {
+                  const da = a.end_date ?? a.start_date ?? "";
+                  const db = b.end_date ?? b.start_date ?? "";
+                  if (da !== db) return da.localeCompare(db);
+                  return a.title.localeCompare(b.title);
+                });
 
-            {tubeRows.map((r) => (
-              <div key={r.product.id} className="absolute left-0 right-0" style={{ top: r.y + 44 }}>
-                <div className="absolute left-0 top-0 flex items-center gap-3 pl-6" style={{ width: leftPadding }}>
-                  <div className="h-3 w-3 rounded-full" style={{ background: r.product.color }} />
-                  <div className="text-sm font-medium text-zinc-950 dark:text-zinc-50">{r.product.name}</div>
-                </div>
-              </div>
-            ))}
-
-            {tubeLanes.map((row) => {
-              const productColor = productColorById.get(row.productId) ?? "#0ea5e9";
               return (
-                <div key={row.productId} className="absolute left-0 right-0" style={{ top: row.baseY }}>
-                  {row.lanes.map((lane, laneIdx) => {
-                    const y = laneIdx * laneOffset;
-                    return (
-                      <div key={`${row.productId}-lane-${laneIdx}`} className="absolute left-0 right-0" style={{ top: y }}>
-                        {lane.map((s) => (
-                          <div
-                            key={s.id}
-                            className="absolute rounded-full"
-                            style={{
-                              left: s.left,
-                              width: Math.max(10, s.right - s.left),
-                              height: 10,
-                              transform: "translateY(-50%)",
-                              background: productColor,
-                              opacity: s.opacity,
-                              filter: "drop-shadow(0 8px 12px rgba(0,0,0,0.12))",
-                            }}
-                          />
-                        ))}
+                <div key={p.id} className="rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+                  <div className="flex items-start justify-between gap-4 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-3">
+                        <div className="mt-1 h-3 w-3 flex-none rounded-full" style={{ background: p.color }} />
+                        <div className="min-w-0 text-sm font-semibold text-zinc-950 dark:text-zinc-50">{p.name}</div>
                       </div>
-                    );
-                  })}
+                      {p.public_description ? (
+                        <div className="mt-1 pl-6 text-xs text-zinc-500">{p.public_description}</div>
+                      ) : null}
+                    </div>
+                    <button
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                      onClick={() => openProductDetails(p.id)}
+                      type="button"
+                    >
+                      ⋯
+                    </button>
+                  </div>
+
+                  <div className="overflow-hidden border-t border-zinc-200 dark:border-zinc-800">
+                    <div className="grid grid-cols-[1fr_110px_110px_110px_140px_90px] gap-3 bg-zinc-50 px-4 py-2 text-xs font-medium text-zinc-500 dark:bg-zinc-900/40">
+                      <div>Initiative</div>
+                      <div>Status</div>
+                      <div>Start</div>
+                      <div>End</div>
+                      <div>Revenue</div>
+                      <div>Public</div>
+                    </div>
+                    {productItems.length ? (
+                      productItems.map((it) => {
+                        const start = it.start_date ? it.start_date.slice(0, 7) : "—";
+                        const end = it.end_date ? it.end_date.slice(0, 7) : "—";
+                        const rev =
+                          it.revenue_low != null || it.revenue_high != null
+                            ? `${it.revenue_currency}${formatCompactNumber(it.revenue_low ?? it.revenue_high ?? 0)}–${it.revenue_currency}${formatCompactNumber(it.revenue_high ?? it.revenue_low ?? 0)}`
+                            : "—";
+                        return (
+                          <button
+                            key={it.id}
+                            className="grid w-full grid-cols-[1fr_110px_110px_110px_140px_90px] items-center gap-3 border-t border-zinc-100 px-4 py-3 text-left text-sm hover:bg-zinc-50 dark:border-zinc-900 dark:hover:bg-zinc-900/40"
+                            onClick={() => openItem(it.id)}
+                            type="button"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-medium text-zinc-950 dark:text-zinc-50">{it.title}</div>
+                            </div>
+                            <div className="text-xs text-zinc-600 dark:text-zinc-400">{it.status}</div>
+                            <div className="text-xs text-zinc-600 dark:text-zinc-400">{start}</div>
+                            <div className="text-xs text-zinc-600 dark:text-zinc-400">{end}</div>
+                            <div className="text-xs text-zinc-600 dark:text-zinc-400">{rev}</div>
+                            <div className="text-xs text-zinc-600 dark:text-zinc-400">{it.is_public ? "Yes" : "No"}</div>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="px-4 py-4 text-sm text-zinc-500">No initiatives yet.</div>
+                    )}
+                  </div>
                 </div>
               );
             })}
-
-            <div className="absolute left-0 top-0 right-0 bottom-0">
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                fitView={false}
-                nodesDraggable={false}
-                nodesConnectable={false}
-                elementsSelectable={false}
-                panOnDrag={false}
-                panOnScroll={false}
-                selectionOnDrag={false}
-                zoomOnScroll={false}
-                zoomOnPinch={false}
-                zoomOnDoubleClick={false}
-                preventScrolling={false}
-                onInit={setRf}
-                onNodeClick={(_, n) => openItem(n.id)}
-              >
-                <Background gap={24} size={1} color="rgba(0,0,0,0.06)" />
-                <Controls />
-              </ReactFlow>
-            </div>
           </div>
         </div>
       </div>
+
+      {showTubeMap ? (
+        <div className="fixed inset-0 z-50" onClick={() => setShowTubeMap(false)} role="presentation">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+          <div
+            className="absolute inset-x-0 top-6 mx-auto w-full max-w-[1400px] px-6"
+            onClick={(e) => e.stopPropagation()}
+            role="presentation"
+          >
+            <div className="rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+                <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Tube map</div>
+                <button
+                  className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-950 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50 dark:hover:bg-zinc-900"
+                  onClick={() => setShowTubeMap(false)}
+                  type="button"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="relative h-[720px] overflow-auto">
+                <div
+                  className="absolute left-0 top-0"
+                  style={{
+                    width: leftPadding + monthWidth * timelineMonths + 280,
+                    height: topPadding + rowHeight * tubeRows.length + 200,
+                  }}
+                >
+                  <div className="sticky top-0 z-10 flex bg-white/90 backdrop-blur dark:bg-zinc-950/80">
+                    <div style={{ width: leftPadding }} />
+                    {months.map((m) => (
+                      <div
+                        key={m.key}
+                        className="border-l border-zinc-100 py-3 text-center text-xs font-medium text-zinc-500 dark:border-zinc-900 dark:text-zinc-500"
+                        style={{ width: monthWidth }}
+                      >
+                        {m.label}
+                      </div>
+                    ))}
+                  </div>
+
+                  {tubeRows.map((r) => (
+                    <div key={r.product.id} className="absolute left-0 right-0" style={{ top: r.y + 44 }}>
+                      <div className="absolute left-0 top-0 flex items-center gap-3 pl-6" style={{ width: leftPadding }}>
+                        <div className="h-3 w-3 rounded-full" style={{ background: r.product.color }} />
+                        <div className="text-sm font-medium text-zinc-950 dark:text-zinc-50">{r.product.name}</div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {tubeLanes.map((row) => {
+                    const productColor = productColorById.get(row.productId) ?? "#0ea5e9";
+                    return (
+                      <div key={row.productId} className="absolute left-0 right-0" style={{ top: row.baseY }}>
+                        {row.lanes.map((lane, laneIdx) => {
+                          const y = laneIdx * laneOffset;
+                          return (
+                            <div
+                              key={`${row.productId}-lane-${laneIdx}`}
+                              className="absolute left-0 right-0"
+                              style={{ top: y }}
+                            >
+                              {lane.map((s) => (
+                                <div
+                                  key={s.id}
+                                  className="absolute rounded-full"
+                                  style={{
+                                    left: s.left,
+                                    width: Math.max(10, s.right - s.left),
+                                    height: 10,
+                                    transform: "translateY(-50%)",
+                                    background: productColor,
+                                    opacity: s.opacity,
+                                    filter: "drop-shadow(0 8px 12px rgba(0,0,0,0.12))",
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+
+                  <div className="absolute left-0 top-0 right-0 bottom-0">
+                    <ReactFlow
+                      nodes={nodes}
+                      edges={edges}
+                      fitView={false}
+                      nodesDraggable={false}
+                      nodesConnectable={false}
+                      elementsSelectable={false}
+                      panOnDrag={false}
+                      panOnScroll={false}
+                      selectionOnDrag={false}
+                      zoomOnScroll={false}
+                      zoomOnPinch={false}
+                      zoomOnDoubleClick={false}
+                      preventScrolling={false}
+                      onInit={setRf}
+                      onNodeClick={(_, n) => openItem(n.id)}
+                    >
+                      <Background gap={24} size={1} color="rgba(0,0,0,0.06)" />
+                      <Controls />
+                    </ReactFlow>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {selectedProductEditId ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/20 p-4 sm:items-center">
