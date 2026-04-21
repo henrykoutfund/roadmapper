@@ -105,27 +105,50 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
 
     return products.map((p, idx) => {
       const list = byProduct.get(p.id) ?? [];
-      const segments = list
+      const raw = list
         .map((it) => {
-          const start = it.start_date ? new Date(it.start_date) : it.end_date ? new Date(it.end_date) : null;
-          const end = it.end_date ? new Date(it.end_date) : it.start_date ? new Date(it.start_date) : null;
+          const start =
+            it.start_date != null
+              ? new Date(it.start_date)
+              : it.status === "in_progress"
+                ? timelineStart
+                : it.end_date != null
+                  ? new Date(it.end_date)
+                  : null;
+          const end = it.end_date != null ? new Date(it.end_date) : it.start_date != null ? new Date(it.start_date) : null;
           if (!start || !end) return null;
           const startX = xForMonth(start);
           const endX = xForMonth(end) + nodeWidth / 2;
-          const left = Math.min(startX, endX);
-          const right = Math.max(startX, endX);
           return {
-            id: it.id,
-            left,
-            width: Math.max(10, right - left),
+            left: Math.min(startX, endX),
+            right: Math.max(startX, endX),
             opacity: opacityForStatus(it.status),
           };
         })
-        .filter((v): v is NonNullable<typeof v> => Boolean(v));
+        .filter((v): v is NonNullable<typeof v> => Boolean(v))
+        .sort((a, b) => a.left - b.left);
+
+      const merged: Array<{ left: number; right: number; opacity: number }> = [];
+      for (const seg of raw) {
+        const last = merged[merged.length - 1];
+        if (!last || seg.left > last.right) {
+          merged.push({ ...seg });
+          continue;
+        }
+        last.right = Math.max(last.right, seg.right);
+        last.opacity = Math.max(last.opacity, seg.opacity);
+      }
+
+      const segments = merged.map((m, i) => ({
+        id: `seg-${p.id}-${i}`,
+        left: m.left,
+        width: Math.max(10, m.right - m.left),
+        opacity: m.opacity,
+      }));
 
       return { productId: p.id, y: topPadding + idx * rowHeight + 70, segments };
     });
-  }, [items, nodeWidth, products, rowHeight, topPadding, xForMonth]);
+  }, [items, nodeWidth, products, rowHeight, timelineStart, topPadding, xForMonth]);
 
   const revenueSeries = useMemo(() => {
     const lowAdds = new Array<number>(timelineMonths).fill(0);
@@ -277,38 +300,8 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
   }, [items, leftPadding, monthWidth, productById, products, revenueSeries.currency, timelineStart]);
 
   const edges = useMemo<Edge[]>(() => {
-    const byProduct = new Map<string, ItemRow[]>();
-    for (const it of items) {
-      const list = byProduct.get(it.product_id);
-      if (list) list.push(it);
-      else byProduct.set(it.product_id, [it]);
-    }
-
-    const all: Edge[] = [];
-    for (const [productId, list] of byProduct.entries()) {
-      const color = productColorById.get(productId) ?? "#0ea5e9";
-      const sorted = list.slice().sort((a, b) => itemX(a) - itemX(b));
-      for (let i = 0; i < sorted.length - 1; i += 1) {
-        const a = sorted[i];
-        const b = sorted[i + 1];
-        all.push({
-          id: `e-${a.id}-${b.id}`,
-          source: a.id,
-          target: b.id,
-          type: "smoothstep",
-          animated: a.status === "in_progress" || b.status === "in_progress",
-          style: {
-            stroke: color,
-            strokeWidth: 12,
-            strokeLinecap: "round",
-            opacity: 0.8,
-            filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.18))",
-          },
-        });
-      }
-    }
-    return all;
-  }, [itemX, items, productColorById]);
+    return [];
+  }, []);
 
   const chart = useMemo(() => {
     const w = 720;
