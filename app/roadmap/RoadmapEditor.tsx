@@ -134,7 +134,6 @@ export default function RoadmapEditor({
 
           return {
             id: it.id,
-            startX: left,
             left,
             right,
             opacity: opacityForStatus(it.status),
@@ -143,26 +142,15 @@ export default function RoadmapEditor({
         .filter((v): v is NonNullable<typeof v> => Boolean(v))
         .sort((a, b) => a.left - b.left);
 
-      const lanes: Array<Array<{ id: string; left: number; right: number; startX: number; opacity: number; attachLane: number }>> =
-        [];
+      const lanes: Array<Array<{ id: string; left: number; right: number; opacity: number }>> = [];
       const lastRightByLane: number[] = [];
 
       for (const seg of intervals) {
         let lane = lastRightByLane.findIndex((r) => seg.left >= r);
         if (lane === -1) lane = lastRightByLane.length;
 
-        const attachLane = (() => {
-          if (lane === 0) return 0;
-          for (let a = 0; a < lane; a += 1) {
-            const prev = lanes[a];
-            const hit = prev?.some((s) => s.left <= seg.startX && seg.startX <= s.right);
-            if (hit) return a;
-          }
-          return 0;
-        })();
-
         if (!lanes[lane]) lanes[lane] = [];
-        lanes[lane].push({ ...seg, attachLane });
+        lanes[lane].push(seg);
         lastRightByLane[lane] = seg.right;
       }
 
@@ -185,12 +173,8 @@ export default function RoadmapEditor({
     return items.map((it) => {
       const idx = productIndex.get(it.product_id) ?? 0;
       const anchor = it.end_date ? startOfMonth(new Date(it.end_date)) : it.start_date ? startOfMonth(new Date(it.start_date)) : null;
-      const x =
-        it.position_x ??
-        (anchor
-          ? leftPadding + clamp(differenceInCalendarMonths(anchor, timelineStart), 0, 36) * monthWidth
-          : leftPadding);
-      const y = it.position_y ?? topPadding + idx * rowHeight;
+      const x = anchor ? leftPadding + clamp(differenceInCalendarMonths(anchor, timelineStart), 0, 36) * monthWidth : leftPadding;
+      const y = topPadding + idx * rowHeight;
 
       const rev = (() => {
         if (it.revenue_low == null && it.revenue_high == null) return "—";
@@ -796,23 +780,6 @@ export default function RoadmapEditor({
                     const y = laneIdx * laneOffset;
                     return (
                       <div key={`${row.productId}-lane-${laneIdx}`} className="absolute left-0 right-0" style={{ top: y }}>
-                        {laneIdx > 0
-                          ? lane.map((s) => (
-                              <div
-                                key={`c-${s.id}`}
-                                className="absolute rounded-full"
-                                style={{
-                                  left: s.startX,
-                                  width: 12,
-                                  height: Math.max(12, laneIdx - s.attachLane) * laneOffset,
-                                  top: -((laneIdx - s.attachLane) * laneOffset),
-                                  background: productColor,
-                                  opacity: Math.min(0.7, s.opacity),
-                                  filter: "drop-shadow(0 8px 12px rgba(0,0,0,0.08))",
-                                }}
-                              />
-                            ))
-                          : null}
                         {lane.map((s) => (
                           <div
                             key={s.id}
