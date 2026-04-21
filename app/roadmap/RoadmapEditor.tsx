@@ -73,6 +73,10 @@ export default function RoadmapEditor({
   const nodeWidth = 210;
   const laneOffset = 46;
 
+  const timelineEnd = useMemo(() => startOfMonth(addMonths(timelineStart, timelineMonths - 1)), [timelineMonths, timelineStart]);
+  const timelineRightX = useMemo(() => leftPadding + monthWidth * timelineMonths, [leftPadding, monthWidth, timelineMonths]);
+  const timelineMaxRightX = useMemo(() => timelineRightX + nodeWidth / 2, [nodeWidth, timelineRightX]);
+
   const months = useMemo(() => {
     const list: Array<{ key: string; label: string }> = [];
     for (let i = 0; i < timelineMonths; i += 1) {
@@ -132,8 +136,11 @@ export default function RoadmapEditor({
           const end = it.end_date != null ? new Date(it.end_date) : it.start_date != null ? new Date(it.start_date) : null;
           if (!start || !end) return null;
 
-          const startX = xForMonth(start);
-          const endX = xForMonth(end) + nodeWidth / 2;
+          const clippedStart = start < timelineStart ? timelineStart : start > timelineEnd ? timelineEnd : start;
+          const clippedEnd = end < timelineStart ? timelineStart : end > timelineEnd ? timelineEnd : end;
+
+          const startX = start < timelineStart ? leftPadding : xForMonth(clippedStart);
+          const endX = end > timelineEnd ? timelineMaxRightX : xForMonth(clippedEnd) + nodeWidth / 2;
           const left = Math.min(startX, endX);
           const right = Math.max(startX, endX);
 
@@ -165,7 +172,18 @@ export default function RoadmapEditor({
         lanes,
       };
     });
-  }, [items, nodeWidth, products, rowHeight, timelineStart, topPadding, xForMonth]);
+  }, [
+    items,
+    leftPadding,
+    nodeWidth,
+    products,
+    rowHeight,
+    timelineEnd,
+    timelineMaxRightX,
+    timelineStart,
+    topPadding,
+    xForMonth,
+  ]);
 
   const laneIndexByItemId = useMemo(() => {
     const map = new Map<string, number>();
@@ -806,7 +824,7 @@ export default function RoadmapEditor({
           </button>
         </div>
 
-        <div className="max-h-[680px] overflow-auto p-5">
+        <div className="p-5">
           <div className="grid gap-6">
             {products.map((p) => {
               const productItems = items
