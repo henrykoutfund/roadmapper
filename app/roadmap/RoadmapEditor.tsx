@@ -22,6 +22,14 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function formatCompactNumber(amount: number) {
+  const abs = Math.abs(amount);
+  if (abs >= 1_000_000_000) return `${(amount / 1_000_000_000).toFixed(1)}b`;
+  if (abs >= 1_000_000) return `${(amount / 1_000_000).toFixed(1)}m`;
+  if (abs >= 1_000) return `${Math.round(amount / 1_000)}k`;
+  return `${Math.round(amount)}`;
+}
+
 export default function RoadmapEditor({
   roadmapId,
   products: initialProducts,
@@ -57,7 +65,7 @@ export default function RoadmapEditor({
   const timelineMonths = 12;
   const monthWidth = 180;
   const rowHeight = 120;
-  const leftPadding = 300;
+  const leftPadding = 240;
   const topPadding = 60;
 
   const months = useMemo(() => {
@@ -113,10 +121,16 @@ export default function RoadmapEditor({
           : leftPadding);
       const y = it.position_y ?? topPadding + idx * rowHeight;
 
-      const rev =
-        it.revenue_low != null || it.revenue_high != null
-          ? `${it.revenue_currency} ${it.revenue_low ?? "?"}–${it.revenue_high ?? "?"}`
-          : "—";
+      const rev = (() => {
+        if (it.revenue_low == null && it.revenue_high == null) return "—";
+        const currency = it.revenue_currency ?? "£";
+        const low = it.revenue_low ?? null;
+        const high = it.revenue_high ?? null;
+        if (low == null && high == null) return "—";
+        const lo = low ?? high ?? 0;
+        const hi = high ?? low ?? 0;
+        return `${currency}${formatCompactNumber(lo)}–${formatCompactNumber(hi)}`;
+      })();
 
       const productColor = productColorById.get(it.product_id) ?? "#0ea5e9";
 
@@ -128,28 +142,26 @@ export default function RoadmapEditor({
         data: {
           label: (
             <div className="grid gap-1">
-              <div className="text-sm font-semibold text-zinc-950">{it.title}</div>
+              <div className="text-sm font-semibold leading-5 text-zinc-950">
+                <div className="line-clamp-2">{it.title}</div>
+              </div>
               <div className="text-xs text-zinc-600">{rev}</div>
               <div className="text-[11px] text-zinc-500">
                 {it.status}
                 {it.is_public ? "" : " · internal"}
               </div>
-              <div className="inline-flex items-center gap-1 text-[11px] font-medium text-zinc-500">
-                <span>ⓘ</span>
-                <span>Click for details</span>
-              </div>
             </div>
           ),
         },
         style: {
-          width: 260,
+          width: 210,
           borderRadius: 16,
           border: it.id === selectedItemId ? "2px solid rgb(24 24 27)" : "1px solid rgb(228 228 231)",
           background: "white",
-          padding: 12,
+          padding: 10,
           boxShadow: "0 10px 30px rgba(0,0,0,0.07)",
           borderLeft: `6px solid ${productColor}`,
-          maxHeight: 150,
+          maxHeight: 140,
           overflow: "hidden",
         },
       };
@@ -709,7 +721,7 @@ export default function RoadmapEditor({
           <div
             className="absolute left-0 top-0"
             style={{
-              width: leftPadding + monthWidth * timelineMonths + 400,
+              width: leftPadding + monthWidth * timelineMonths + 280,
               height: topPadding + rowHeight * tubeRows.length + 200,
             }}
           >
@@ -740,10 +752,16 @@ export default function RoadmapEditor({
                 nodes={nodes}
                 edges={edges}
                 fitView={false}
-                panOnScroll
                 nodesDraggable={false}
                 nodesConnectable={false}
                 elementsSelectable={false}
+                panOnDrag={false}
+                panOnScroll={false}
+                selectionOnDrag={false}
+                zoomOnScroll={false}
+                zoomOnPinch={false}
+                zoomOnDoubleClick={false}
+                preventScrolling={false}
                 onInit={setRf}
                 onNodeClick={(_, n) => openItem(n.id)}
               >

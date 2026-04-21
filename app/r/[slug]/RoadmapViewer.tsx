@@ -20,6 +20,14 @@ function confidenceWeight(c: ItemRow["revenue_confidence"]) {
   return 0.6;
 }
 
+function formatCompactNumber(amount: number) {
+  const abs = Math.abs(amount);
+  if (abs >= 1_000_000_000) return `${(amount / 1_000_000_000).toFixed(1)}b`;
+  if (abs >= 1_000_000) return `${(amount / 1_000_000).toFixed(1)}m`;
+  if (abs >= 1_000) return `${Math.round(amount / 1_000)}k`;
+  return `${Math.round(amount)}`;
+}
+
 function formatCompactCurrency(amount: number, currencySymbol: string) {
   const abs = Math.abs(amount);
   if (abs >= 1_000_000_000) return `${currencySymbol}${(amount / 1_000_000_000).toFixed(1)}b`;
@@ -33,7 +41,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
   const timelineMonths = 12;
   const monthWidth = 180;
   const rowHeight = 120;
-  const leftPadding = 300;
+  const leftPadding = 240;
   const topPadding = 60;
   const [drawer, setDrawer] = useState<{ type: "product"; id: string } | { type: "item"; id: string } | null>(null);
 
@@ -155,10 +163,19 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
           : leftPadding);
       const y = it.position_y ?? topPadding + idx * rowHeight;
 
-      const rev =
-        it.revenue_low != null || it.revenue_high != null
-          ? `${it.revenue_currency} ${it.revenue_low ?? "?"}–${it.revenue_high ?? "?"} (${it.revenue_confidence})`
-          : "—";
+      const rev = (() => {
+        if (it.revenue_low == null && it.revenue_high == null) return "—";
+        const currency = it.revenue_currency ?? revenueSeries.currency;
+        const low = it.revenue_low ?? null;
+        const high = it.revenue_high ?? null;
+        if (low == null && high == null) return "—";
+        const lo = low ?? high ?? 0;
+        const hi = high ?? low ?? 0;
+        const range = `${currency}${formatCompactNumber(lo)}–${formatCompactNumber(hi)}`;
+        const c =
+          it.revenue_confidence === "high" ? "high" : it.revenue_confidence === "medium" ? "med" : "low";
+        return `${range} (${c})`;
+      })();
 
       const productColor = productById.get(it.product_id)?.color ?? "#0ea5e9";
       const statusLabel =
@@ -180,40 +197,39 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
         data: {
           label: (
             <div className="grid gap-1">
-              <div className="flex items-start justify-between gap-3">
-                <div className="text-sm font-semibold leading-5 text-zinc-950">{it.title}</div>
+              <div className="flex min-w-0 items-start justify-between gap-2">
+                <div className="min-w-0 text-sm font-semibold leading-5 text-zinc-950">
+                  <div className="line-clamp-2">{it.title}</div>
+                </div>
                 <div className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-700">
                   {statusLabel}
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-3 pt-1 text-xs text-zinc-600">
-                <div>{rev}</div>
-                <div className="inline-flex items-center gap-1 text-[11px] font-medium text-zinc-500">
-                  <span>ⓘ</span>
-                  <span>Click for details</span>
-                </div>
+              <div className="flex items-center justify-between gap-2 pt-1 text-xs text-zinc-600">
+                <div className="truncate">{rev}</div>
+                <div className="text-[11px] font-medium text-zinc-400">ⓘ</div>
               </div>
             </div>
           ),
         },
         style: {
-          width: 260,
+          width: 210,
           borderRadius: 18,
           border: "1px solid rgb(228 228 231)",
           background: "rgba(255,255,255,0.92)",
-          padding: 12,
+          padding: 10,
           pointerEvents: "auto",
           cursor: "pointer",
           boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
           backdropFilter: "blur(6px)",
           borderLeft: `6px solid ${productColor}`,
-          maxHeight: 160,
+          maxHeight: 140,
           overflow: "hidden",
         },
         type: "default",
       };
     });
-  }, [items, leftPadding, monthWidth, productById, products, timelineStart]);
+  }, [items, leftPadding, monthWidth, productById, products, revenueSeries.currency, timelineStart]);
 
   const edges = useMemo<Edge[]>(() => {
     const byProduct = new Map<string, ItemRow[]>();
@@ -423,7 +439,7 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
           <div
             className="absolute left-0 top-0"
             style={{
-              width: leftPadding + monthWidth * timelineMonths + 400,
+              width: leftPadding + monthWidth * timelineMonths + 280,
               height: topPadding + rowHeight * tubeRows.length + 220,
             }}
           >
@@ -459,10 +475,16 @@ export default function RoadmapViewer({ products, items }: { products: ProductRo
                 nodes={nodes}
                 edges={edges}
                 fitView={false}
-                panOnScroll
                 nodesDraggable={false}
                 nodesConnectable={false}
                 elementsSelectable={false}
+                panOnDrag={false}
+                panOnScroll={false}
+                selectionOnDrag={false}
+                zoomOnScroll={false}
+                zoomOnPinch={false}
+                zoomOnDoubleClick={false}
+                preventScrolling={false}
                 onNodeClick={(_, n) => setDrawer({ type: "item", id: n.id })}
               >
                 <Background gap={28} size={1} color="rgba(0,0,0,0.06)" />

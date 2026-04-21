@@ -89,7 +89,7 @@ export default async function RoadmapPage() {
 
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 px-6 py-10 font-sans dark:bg-black">
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-between">
+      <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between">
         <div className="flex items-center gap-4">
           <Image src="/branding/of_vv_logo.png" alt="Outfund ViceVersa" width={120} height={48} priority />
           <div>
@@ -102,7 +102,7 @@ export default async function RoadmapPage() {
         <SignOutButton />
       </div>
 
-      <div className="mx-auto mt-8 w-full max-w-6xl">
+      <div className="mx-auto mt-8 w-full max-w-[1400px]">
         <RoadmapEditor
           roadmapId={roadmap.id}
           products={(products ?? []) as ProductRow[]}
