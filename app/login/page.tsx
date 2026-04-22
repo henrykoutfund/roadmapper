@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
 
+const internalBypassDomains = ["@goviceversa.com", "@out.fund"];
+
 export default function LoginPage() {
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
@@ -37,8 +39,29 @@ export default function LoginPage() {
             setStatus("sending");
             setMessage("");
 
+            const normalizedEmail = email.trim().toLowerCase();
+            const isInternalBypass = internalBypassDomains.some((d) => normalizedEmail.endsWith(d));
+
+            if (isInternalBypass) {
+              const res = await fetch("/api/auth/internal-link", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ email: normalizedEmail }),
+              });
+
+              const json = (await res.json().catch(() => null)) as { action_link?: string; error?: string } | null;
+              if (!res.ok || !json?.action_link) {
+                setStatus("error");
+                setMessage(json?.error ?? "Failed to start login.");
+                return;
+              }
+
+              location.href = json.action_link;
+              return;
+            }
+
             const { error } = await supabase.auth.signInWithOtp({
-              email,
+              email: normalizedEmail,
               options: {
                 emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? location.origin}/auth/callback`,
               },
