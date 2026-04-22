@@ -20,19 +20,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "not_allowed" }, { status: 403 });
   }
 
-  const origin = new URL(req.url).origin;
-  const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL ?? origin}/auth/callback`;
-
   const supabase = createAdminClient();
   const { data, error } = await supabase.auth.admin.generateLink({
     type: "magiclink",
     email,
-    options: { redirectTo },
   });
 
-  if (error || !data?.properties?.action_link) {
+  const tokenHash = data?.properties?.hashed_token;
+  const verificationType = data?.properties?.verification_type;
+  if (error || !tokenHash || !verificationType) {
     return NextResponse.json({ error: error?.message ?? "generate_link_failed" }, { status: 500 });
   }
 
-  return NextResponse.json({ action_link: data.properties.action_link });
+  const origin = new URL(req.url).origin;
+  const callbackUrl = new URL("/auth/callback", process.env.NEXT_PUBLIC_APP_URL ?? origin);
+  callbackUrl.searchParams.set("token_hash", tokenHash);
+  callbackUrl.searchParams.set("type", verificationType);
+  callbackUrl.searchParams.set("next", "/roadmap");
+
+  return NextResponse.json({ action_link: callbackUrl.toString() });
 }
