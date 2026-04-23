@@ -872,7 +872,7 @@ export default function RoadmapEditor({
                       <div>Start</div>
                       <div>End</div>
                       <div>Revenue</div>
-                      <div>Public</div>
+                      <div>Audience</div>
                     </div>
                     {productItems.length ? (
                       productItems.map((it) => {
@@ -896,7 +896,9 @@ export default function RoadmapEditor({
                             <div className="text-xs text-zinc-600 dark:text-zinc-400">{start}</div>
                             <div className="text-xs text-zinc-600 dark:text-zinc-400">{end}</div>
                             <div className="text-xs text-zinc-600 dark:text-zinc-400">{rev}</div>
-                            <div className="text-xs text-zinc-600 dark:text-zinc-400">{it.is_public ? "Yes" : "No"}</div>
+                            <div className="text-xs text-zinc-600 dark:text-zinc-400">
+                              {it.is_public ? "External" : "Internal"}
+                            </div>
                           </button>
                         );
                       })
@@ -1163,14 +1165,14 @@ export default function RoadmapEditor({
                   </select>
                 </label>
                 <label className="grid gap-1">
-                  <div className="text-zinc-600 dark:text-zinc-400">Public</div>
+                  <div className="text-zinc-600 dark:text-zinc-400">Audience</div>
                   <select
                     className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50"
                     value={String(Boolean(itemDraft.is_public ?? selectedItem.is_public))}
                     onChange={(e) => setItemDraft((p) => ({ ...p, is_public: e.target.value === "true" }))}
                   >
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
+                    <option value="true">External</option>
+                    <option value="false">Internal</option>
                   </select>
                 </label>
               </div>
